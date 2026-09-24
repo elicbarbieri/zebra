@@ -230,6 +230,38 @@ impl ZebraDb {
         Some((header, transactions))
     }
 
+    /// Returns the serialized [`Block`] with [`block::Hash`] or [`Height`], if it exists in the
+    /// finalized chain.
+    ///
+    /// Consensus encoding reassembled from stored bytes (header, `CompactSize` count,
+    /// transactions), nothing deserialized
+    #[allow(clippy::unwrap_in_result)]
+    pub fn raw_block_bytes(&self, hash_or_height: HashOrHeight) -> Option<Vec<u8>> {
+        let (header, transactions) = self.raw_block(hash_or_height)?;
+
+        let count = CompactSizeMessage::try_from(transactions.len())
+            .expect("a stored block has a serializable transaction count")
+            .zcash_serialize_to_vec()
+            .expect("writing to a `Vec` should never fail");
+
+        let mut bytes = Vec::with_capacity(
+            header.raw_bytes().len()
+                + count.len()
+                + transactions
+                    .iter()
+                    .map(|tx| tx.raw_bytes().len())
+                    .sum::<usize>(),
+        );
+
+        bytes.extend_from_slice(header.raw_bytes());
+        bytes.extend_from_slice(&count);
+        for transaction in &transactions {
+            bytes.extend_from_slice(transaction.raw_bytes());
+        }
+
+        Some(bytes)
+    }
+
     /// Returns the Sapling [`note commitment tree`](sapling::tree::NoteCommitmentTree) specified by
     /// a hash or height, if it exists in the finalized state.
     #[allow(clippy::unwrap_in_result)]
