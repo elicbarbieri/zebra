@@ -13,14 +13,16 @@
 
 use incrementalmerkletree::{frontier::Frontier, Position};
 
-use super::{Node, NoteCommitmentTree, Root, MERKLE_DEPTH};
+use ::orchard::tree::MerkleHashOrchard;
+
+use super::{NoteCommitmentTree, Root, MERKLE_DEPTH};
 
 /// A legacy version of [`NoteCommitmentTree`].
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename = "NoteCommitmentTree")]
 #[allow(missing_docs)]
 pub struct LegacyNoteCommitmentTree {
-    pub inner: LegacyFrontier<Node, MERKLE_DEPTH>,
+    pub inner: LegacyFrontier<MerkleHashOrchard, MERKLE_DEPTH>,
     cached_root: std::sync::RwLock<Option<Root>>,
 }
 
@@ -49,8 +51,10 @@ pub struct LegacyFrontier<H, const DEPTH: u8> {
     frontier: Option<LegacyNonEmptyFrontier<H>>,
 }
 
-impl From<LegacyFrontier<Node, MERKLE_DEPTH>> for Frontier<Node, MERKLE_DEPTH> {
-    fn from(legacy_frontier: LegacyFrontier<Node, MERKLE_DEPTH>) -> Self {
+impl From<LegacyFrontier<MerkleHashOrchard, MERKLE_DEPTH>>
+    for Frontier<MerkleHashOrchard, MERKLE_DEPTH>
+{
+    fn from(legacy_frontier: LegacyFrontier<MerkleHashOrchard, MERKLE_DEPTH>) -> Self {
         if let Some(legacy_frontier_data) = legacy_frontier.frontier {
             let mut ommers = legacy_frontier_data.ommers;
             let position = Position::from(
@@ -76,8 +80,10 @@ impl From<LegacyFrontier<Node, MERKLE_DEPTH>> for Frontier<Node, MERKLE_DEPTH> {
     }
 }
 
-impl From<Frontier<Node, MERKLE_DEPTH>> for LegacyFrontier<Node, MERKLE_DEPTH> {
-    fn from(frontier: Frontier<Node, MERKLE_DEPTH>) -> Self {
+impl From<Frontier<MerkleHashOrchard, MERKLE_DEPTH>>
+    for LegacyFrontier<MerkleHashOrchard, MERKLE_DEPTH>
+{
+    fn from(frontier: Frontier<MerkleHashOrchard, MERKLE_DEPTH>) -> Self {
         if let Some(frontier_data) = frontier.value() {
             let leaf_from_frontier = *frontier_data.leaf();
             let mut leaf = LegacyLeaf::Left(leaf_from_frontier);

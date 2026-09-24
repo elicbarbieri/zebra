@@ -491,13 +491,19 @@ pub enum ReadResponse {
     /// Response to [`ReadRequest::OrchardSubtrees`] with the specified Orchard note commitment
     /// subtrees.
     OrchardSubtrees(
-        BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>,
+        BTreeMap<
+            NoteCommitmentSubtreeIndex,
+            NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+        >,
     ),
 
     /// Response to [`ReadRequest::IronwoodSubtrees`] with the specified Ironwood note commitment
     /// subtrees. Ironwood reuses the Orchard note type.
     IronwoodSubtrees(
-        BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>,
+        BTreeMap<
+            NoteCommitmentSubtreeIndex,
+            NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+        >,
     ),
 
     /// Response to [`ReadRequest::AddressBalance`] with the total balance of the addresses,

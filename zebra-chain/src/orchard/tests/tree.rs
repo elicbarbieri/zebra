@@ -1,17 +1,20 @@
-use halo2::pasta::{group::ff::PrimeField, pallas};
+use ::orchard::tree::MerkleHashOrchard;
+use incrementalmerkletree::{Hashable, Level};
 
 use crate::orchard::tests::vectors;
 use crate::orchard::tree::*;
 
+/// Upstream empty roots = the Orchard test vectors, leaf (level 0) to root
 #[test]
 fn empty_roots() {
     let _init_guard = zebra_test::init();
 
-    for i in 0..EMPTY_ROOTS.len() {
+    for (level, expected) in vectors::EMPTY_ROOTS.iter().enumerate() {
+        let level = u8::try_from(level).expect("33 levels");
         assert_eq!(
-            EMPTY_ROOTS[i].to_repr(),
-            // The test vector is in reversed order.
-            vectors::EMPTY_ROOTS[usize::from(MERKLE_DEPTH) - i]
+            MerkleHashOrchard::empty_root(Level::from(level)).to_bytes(),
+            *expected,
+            "level {level}"
         );
     }
 }
@@ -26,7 +29,7 @@ fn incremental_roots() {
 
     for (i, commitment_set) in vectors::COMMITMENTS.iter().enumerate() {
         for cm_x_bytes in commitment_set.iter() {
-            let cm_x = pallas::Base::from_repr(*cm_x_bytes).unwrap();
+            let cm_x = ::orchard::note::ExtractedNoteCommitment::from_bytes(cm_x_bytes).unwrap();
 
             leaves.push(cm_x);
 
