@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: Added
+body: '`proptest-impl`: `Transaction::{with_sapling_bundle, with_sprout_bundle}` (matching `with_orchard_bundle`) and `sapling::arbitrary::with_anchor`.'
+time: 2026-09-22T16:00:00.000000000Z
