@@ -145,8 +145,7 @@ pub(crate) fn tx_no_duplicates_in_chain(
 
 /// Reject double-spends of nullifiers:
 /// - both within the same `JoinSplit` (sprout only),
-/// - from different `JoinSplit`s, [`sapling::Spend`](zebra_chain::sapling::Spend)s or
-///   [`orchard::Action`](zebra_chain::orchard::Action)s in this
+/// - from different `JoinSplit`s, Sapling spends or Orchard actions in this
 ///   [`Transaction`]'s shielded data, or
 /// - one from this shielded data, and another from:
 ///   - a previous transaction in this [`Block`](zebra_chain::block::Block), or

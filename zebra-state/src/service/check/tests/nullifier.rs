@@ -9,11 +9,12 @@ use zebra_chain::{
     block::{Block, Height},
     fmt::TypeNameToDebug,
     orchard,
+    parameters::NetworkUpgrade::Nu5,
     primitives::Groth16Proof,
-    sapling::{self, FieldNotPresent, PerSpendAnchor, TransferData::*},
-    serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
+    sapling,
+    serialization::ZcashDeserializeInto,
     sprout::JoinSplit,
-    transaction::{JoinSplitData, Transaction},
+    transaction::{JoinSplitData, LockTime, Transaction},
 };
 
 use crate::{
@@ -417,8 +418,8 @@ proptest! {
     /// (And that the test infrastructure generally works.)
     #[test]
     fn accept_distinct_arbitrary_sapling_nullifiers_in_one_block(
-        spend in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
+        spend in sapling::arbitrary::spend(),
+        sapling_shielded_data in sapling::arbitrary::bundle(false),
         use_finalized_state in any::<bool>(),
     ) {
         let _init_guard = zebra_test::init();
@@ -427,10 +428,10 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        let expected_nullifier = spend.nullifier;
+        let expected_nullifier = sapling::Nullifier::from(spend.nullifier().0);
 
         let transaction =
-            transaction_v4_with_sapling_shielded_data(sapling_shielded_data.0, [spend.0]);
+            transaction_v4_with_sapling_shielded_data(sapling_shielded_data, [spend]);
 
         // convert the coinbase transaction to a version that the non-finalized state will accept
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -473,9 +474,9 @@ proptest! {
     /// if they come from different Spends in the same sapling::ShieldedData/Transaction.
     #[test]
     fn reject_duplicate_sapling_nullifiers_in_transaction(
-        spend1 in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        mut spend2 in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
+        spend1 in sapling::arbitrary::spend(),
+        mut spend2 in sapling::arbitrary::spend(),
+        sapling_shielded_data in sapling::arbitrary::bundle(false),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -484,12 +485,12 @@ proptest! {
             .expect("block should deserialize");
 
         // create a double-spend across two spends
-        let duplicate_nullifier = spend1.nullifier;
-        spend2.nullifier = duplicate_nullifier;
+        let duplicate_nullifier = sapling::Nullifier::from(spend1.nullifier().0);
+        spend2 = sapling::arbitrary::with_nullifier(&spend2, *spend1.nullifier());
 
         let transaction = transaction_v4_with_sapling_shielded_data(
-            sapling_shielded_data.0,
-            [spend1.0, spend2.0],
+            sapling_shielded_data,
+            [spend1, spend2],
         );
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -525,10 +526,10 @@ proptest! {
     /// if they come from different transactions in the same block.
     #[test]
     fn reject_duplicate_sapling_nullifiers_in_block(
-        spend1 in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        mut spend2 in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data1 in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data2 in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
+        spend1 in sapling::arbitrary::spend(),
+        mut spend2 in sapling::arbitrary::spend(),
+        sapling_shielded_data1 in sapling::arbitrary::bundle(false),
+        sapling_shielded_data2 in sapling::arbitrary::bundle(false),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -537,13 +538,13 @@ proptest! {
             .expect("block should deserialize");
 
         // create a double-spend across two transactions
-        let duplicate_nullifier = spend1.nullifier;
-        spend2.nullifier = duplicate_nullifier;
+        let duplicate_nullifier = sapling::Nullifier::from(spend1.nullifier().0);
+        spend2 = sapling::arbitrary::with_nullifier(&spend2, *spend1.nullifier());
 
         let transaction1 =
-            transaction_v4_with_sapling_shielded_data(sapling_shielded_data1.0, [spend1.0]);
+            transaction_v4_with_sapling_shielded_data(sapling_shielded_data1, [spend1]);
         let transaction2 =
-            transaction_v4_with_sapling_shielded_data(sapling_shielded_data2.0, [spend2.0]);
+            transaction_v4_with_sapling_shielded_data(sapling_shielded_data2, [spend2]);
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
 
@@ -580,10 +581,10 @@ proptest! {
     /// if they come from different blocks in the same chain.
     #[test]
     fn reject_duplicate_sapling_nullifiers_in_chain(
-        spend1 in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        mut spend2 in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data1 in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data2 in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
+        spend1 in sapling::arbitrary::spend(),
+        mut spend2 in sapling::arbitrary::spend(),
+        sapling_shielded_data1 in sapling::arbitrary::bundle(false),
+        sapling_shielded_data2 in sapling::arbitrary::bundle(false),
         duplicate_in_finalized_state in any::<bool>(),
     ) {
         let _init_guard = zebra_test::init();
@@ -596,13 +597,13 @@ proptest! {
             .expect("block should deserialize");
 
         // create a double-spend across two blocks
-        let duplicate_nullifier = spend1.nullifier;
-        spend2.nullifier = duplicate_nullifier;
+        let duplicate_nullifier = sapling::Nullifier::from(spend1.nullifier().0);
+        spend2 = sapling::arbitrary::with_nullifier(&spend2, *spend1.nullifier());
 
         let transaction1 =
-            Arc::new(transaction_v4_with_sapling_shielded_data(sapling_shielded_data1.0, [spend1.0]));
+            Arc::new(transaction_v4_with_sapling_shielded_data(sapling_shielded_data1, [spend1]));
         let transaction2 =
-            transaction_v4_with_sapling_shielded_data(sapling_shielded_data2.0, [spend2.0]);
+            transaction_v4_with_sapling_shielded_data(sapling_shielded_data2, [spend2]);
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
         block2.transactions[0] = transaction_v4_from_coinbase(&block2.transactions[0]).into();
@@ -692,8 +693,8 @@ proptest! {
     /// (And that the test infrastructure generally works.)
     #[test]
     fn accept_distinct_arbitrary_orchard_nullifiers_in_one_block(
-        authorized_action in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        orchard_shielded_data in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
+        action in orchard::arbitrary::action(),
+        orchard_shielded_data in orchard::arbitrary::bundle(Nu5),
         use_finalized_state in any::<bool>(),
     ) {
         let _init_guard = zebra_test::init();
@@ -702,11 +703,11 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        let expected_nullifier = authorized_action.action.nullifier;
+        let expected_nullifier = orchard::Nullifier::from(*action.nullifier());
 
         let transaction = transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data.0,
-            [authorized_action.0],
+            orchard_shielded_data,
+            [action],
         );
 
         // convert the coinbase transaction to a version that the non-finalized state will accept
@@ -751,9 +752,9 @@ proptest! {
     /// if they come from different AuthorizedActions in the same orchard::ShieldedData/Transaction.
     #[test]
     fn reject_duplicate_orchard_nullifiers_in_transaction(
-        authorized_action1 in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        mut authorized_action2 in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        orchard_shielded_data in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
+        action1 in orchard::arbitrary::action(),
+        mut action2 in orchard::arbitrary::action(),
+        orchard_shielded_data in orchard::arbitrary::bundle(Nu5),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -761,13 +762,13 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        // create a double-spend across two authorized_actions
-        let duplicate_nullifier = authorized_action1.action.nullifier;
-        authorized_action2.action.nullifier = duplicate_nullifier;
+        // create a double-spend across two actions
+        let duplicate_nullifier = orchard::Nullifier::from(*action1.nullifier());
+        action2 = orchard::arbitrary::with_nullifier(&action2, *action1.nullifier());
 
         let transaction = transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data.0,
-            [authorized_action1.0, authorized_action2.0],
+            orchard_shielded_data,
+            [action1, action2],
         );
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -803,10 +804,10 @@ proptest! {
     /// if they come from different transactions in the same block.
     #[test]
     fn reject_duplicate_orchard_nullifiers_in_block(
-        authorized_action1 in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        mut authorized_action2 in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        orchard_shielded_data1 in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
-        orchard_shielded_data2 in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
+        action1 in orchard::arbitrary::action(),
+        mut action2 in orchard::arbitrary::action(),
+        orchard_shielded_data1 in orchard::arbitrary::bundle(Nu5),
+        orchard_shielded_data2 in orchard::arbitrary::bundle(Nu5),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -815,16 +816,16 @@ proptest! {
             .expect("block should deserialize");
 
         // create a double-spend across two transactions
-        let duplicate_nullifier = authorized_action1.action.nullifier;
-        authorized_action2.action.nullifier = duplicate_nullifier;
+        let duplicate_nullifier = orchard::Nullifier::from(*action1.nullifier());
+        action2 = orchard::arbitrary::with_nullifier(&action2, *action1.nullifier());
 
         let transaction1 = transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data1.0,
-            [authorized_action1.0],
+            orchard_shielded_data1,
+            [action1],
         );
         let transaction2 = transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data2.0,
-            [authorized_action2.0],
+            orchard_shielded_data2,
+            [action2],
         );
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -862,10 +863,10 @@ proptest! {
     /// if they come from different blocks in the same chain.
     #[test]
     fn reject_duplicate_orchard_nullifiers_in_chain(
-        authorized_action1 in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        mut authorized_action2 in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        orchard_shielded_data1 in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
-        orchard_shielded_data2 in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
+        action1 in orchard::arbitrary::action(),
+        mut action2 in orchard::arbitrary::action(),
+        orchard_shielded_data1 in orchard::arbitrary::bundle(Nu5),
+        orchard_shielded_data2 in orchard::arbitrary::bundle(Nu5),
         duplicate_in_finalized_state in any::<bool>(),
     ) {
         let _init_guard = zebra_test::init();
@@ -878,16 +879,16 @@ proptest! {
             .expect("block should deserialize");
 
         // create a double-spend across two blocks
-        let duplicate_nullifier = authorized_action1.action.nullifier;
-        authorized_action2.action.nullifier = duplicate_nullifier;
+        let duplicate_nullifier = orchard::Nullifier::from(*action1.nullifier());
+        action2 = orchard::arbitrary::with_nullifier(&action2, *action1.nullifier());
 
         let transaction1 = Arc::new(transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data1.0,
-            [authorized_action1.0],
+            orchard_shielded_data1,
+            [action1],
         ));
         let transaction2 = transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data2.0,
-            [authorized_action2.0],
+            orchard_shielded_data2,
+            [action2],
         );
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -1026,8 +1027,8 @@ proptest! {
     /// already finalized must be rejected with `DuplicateSaplingNullifier`.
     #[test]
     fn reject_block_containing_sapling_tx_already_in_finalized_chain(
-        spend in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
+        spend in sapling::arbitrary::spend(),
+        sapling_shielded_data in sapling::arbitrary::bundle(false),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -1038,11 +1039,11 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        let expected_duplicate_nullifier = spend.nullifier;
+        let expected_duplicate_nullifier = sapling::Nullifier::from(spend.nullifier().0);
 
         let transaction = Arc::new(transaction_v4_with_sapling_shielded_data(
-            sapling_shielded_data.0,
-            [spend.0],
+            sapling_shielded_data,
+            [spend],
         ));
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -1080,8 +1081,8 @@ proptest! {
     /// already finalized must be rejected with `DuplicateOrchardNullifier`.
     #[test]
     fn reject_block_containing_orchard_tx_already_in_finalized_chain(
-        authorized_action in TypeNameToDebug::<orchard::AuthorizedAction>::arbitrary(),
-        orchard_shielded_data in TypeNameToDebug::<orchard::ShieldedData>::arbitrary(),
+        action in orchard::arbitrary::action(),
+        orchard_shielded_data in orchard::arbitrary::bundle(Nu5),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -1092,11 +1093,11 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        let expected_duplicate_nullifier = authorized_action.action.nullifier;
+        let expected_duplicate_nullifier = orchard::Nullifier::from(*action.nullifier());
 
         let transaction = Arc::new(transaction_v5_with_orchard_shielded_data(
-            orchard_shielded_data.0,
-            [authorized_action.0],
+            orchard_shielded_data,
+            [action],
         ));
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -1143,8 +1144,8 @@ proptest! {
     /// so the duplicate is rejected via the existing nullifier check.
     #[test]
     fn reject_block_containing_sapling_tx_already_in_non_finalized_chain(
-        spend in TypeNameToDebug::<sapling::Spend<PerSpendAnchor>>::arbitrary(),
-        sapling_shielded_data in TypeNameToDebug::<sapling::ShieldedData<PerSpendAnchor>>::arbitrary(),
+        spend in sapling::arbitrary::spend(),
+        sapling_shielded_data in sapling::arbitrary::bundle(false),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -1155,11 +1156,11 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        let expected_duplicate_nullifier = spend.nullifier;
+        let expected_duplicate_nullifier = sapling::Nullifier::from(spend.nullifier().0);
 
         let transaction = Arc::new(transaction_v4_with_sapling_shielded_data(
-            sapling_shielded_data.0,
-            [spend.0],
+            sapling_shielded_data,
+            [spend],
         ));
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -1263,11 +1264,10 @@ fn transaction_v4_with_joinsplit_data(
     Transaction::test_v4_with_joinsplit_data(joinsplit_data.as_ref())
 }
 
-/// Return a `Transaction::V4` containing `sapling_shielded_data`,
-/// with its `Spend`s replaced by `spends`.
+/// Return a V4 transaction containing `sapling_shielded_data`'s outputs and `spends`, with a
+/// zero value balance.
 ///
 /// Other fields have empty or default values.
-/// Builds the transaction by serializing to raw V4 bytes and deserializing.
 ///
 /// Note: since sapling nullifiers in V5 transactions are identical to V4 transactions,
 /// we just use V4 transactions in the tests.
@@ -1276,151 +1276,42 @@ fn transaction_v4_with_joinsplit_data(
 ///
 /// If there are no `Spend`s in `spends`, and no `Output`s in `sapling_shielded_data`.
 fn transaction_v4_with_sapling_shielded_data(
-    sapling_shielded_data: impl Into<Option<sapling::ShieldedData<PerSpendAnchor>>>,
-    spends: impl IntoIterator<Item = sapling::Spend<PerSpendAnchor>>,
+    sapling_shielded_data: sapling::arbitrary::Bundle,
+    spends: impl IntoIterator<Item = sapling::arbitrary::Spend>,
 ) -> Transaction {
-    let mut sapling_shielded_data = sapling_shielded_data.into();
-    let spends: Vec<_> = spends.into_iter().collect();
-
-    if let Some(ref mut sapling_shielded_data) = sapling_shielded_data {
-        // make sure there are no other nullifiers, by replacing all the spends
-        sapling_shielded_data.transfers = match (
-            sapling_shielded_data.transfers.clone(),
-            spends.try_into().ok(),
-        ) {
-            // old and new spends: replace spends
-            (
-                SpendsAndMaybeOutputs {
-                    shared_anchor,
-                    maybe_outputs,
-                    ..
-                },
-                Some(spends),
-            ) => SpendsAndMaybeOutputs {
-                shared_anchor,
-                spends,
-                maybe_outputs,
-            },
-            // old spends, but no new spends: delete spends, panic if no outputs
-            (SpendsAndMaybeOutputs { maybe_outputs, .. }, None) => JustOutputs {
-                outputs: maybe_outputs.try_into().expect(
-                    "unexpected invalid TransferData: must have at least one spend or one output",
-                ),
-            },
-            // no old spends, but new spends: add spends
-            (JustOutputs { outputs, .. }, Some(spends)) => SpendsAndMaybeOutputs {
-                shared_anchor: FieldNotPresent,
-                spends,
-                maybe_outputs: outputs.into(),
-            },
-            // no old and no new spends: do nothing
-            (just_outputs @ JustOutputs { .. }, None) => just_outputs,
-        };
-
-        // set value balance to 0 to pass the chain value pool checks
-        let zero_amount = 0.try_into().expect("unexpected invalid zero amount");
-        sapling_shielded_data.value_balance = zero_amount;
-    }
-
-    // Build a V4 transaction by writing raw bytes with the sapling shielded data in the correct
-    // V4 wire format (valueBalanceSapling BEFORE spends and outputs).
-    let mut bytes: Vec<u8> = Vec::new();
-    // V4 overwintered header + versionGroupId
-    bytes.extend_from_slice(&0x8000_0004u32.to_le_bytes());
-    bytes.extend_from_slice(&0x892F_2085u32.to_le_bytes());
-    // No transparent inputs or outputs
-    bytes.push(0x00);
-    bytes.push(0x00);
-    // nLockTime = min_lock_time_timestamp (500_000_000 LE)
-    bytes.extend_from_slice(&500_000_000u32.to_le_bytes());
-    // nExpiryHeight = 0
-    bytes.extend_from_slice(&0u32.to_le_bytes());
-    // valueBalanceSapling = 0
-    bytes.extend_from_slice(&0i64.to_le_bytes());
-
-    // Sapling spends and outputs (V4 format: spends with individual anchors)
-    if let Some(ref sd) = sapling_shielded_data {
-        let spend_list: Vec<_> = sd.spends().cloned().collect();
-        let output_list: Vec<_> = sd
-            .outputs()
-            .cloned()
-            .map(sapling::Output::into_v4)
-            .collect();
-
-        spend_list
-            .zcash_serialize(&mut bytes)
-            .expect("sapling spends serialization should succeed");
-        output_list
-            .zcash_serialize(&mut bytes)
-            .expect("sapling outputs serialization should succeed");
-
-        // No joinsplits
-        bytes.push(0x00);
-
-        // bindingSig (64 bytes zeros - not cryptographically valid but state only checks nullifiers)
-        bytes.extend_from_slice(&[0u8; 64]);
-    } else {
-        // nSpendsSapling = 0, nOutputsSapling = 0
-        bytes.push(0x00);
-        bytes.push(0x00);
-        // nJoinSplits = 0
-        bytes.push(0x00);
-    }
-
-    Transaction::zcash_deserialize(bytes.as_slice())
-        .expect("manually constructed V4 transaction should deserialize")
+    Transaction::test_v4_with_sapling(
+        Vec::new(),
+        Vec::new(),
+        LockTime::min_lock_time_timestamp(),
+        Height(0),
+        Some(
+            sapling::arbitrary::with_spends(&sapling_shielded_data, spends)
+                .expect("a spend or an output"),
+        ),
+    )
 }
 
-/// Return a `Transaction::V5` containing `orchard_shielded_data`.
-/// with its `AuthorizedAction`s replaced by `authorized_actions`.
+/// Return a NU5 V5 transaction containing `orchard_shielded_data` with its actions replaced by
+/// `actions`, and a zero value balance.
 ///
 /// Other fields have empty or default values.
-/// Builds the transaction by serializing to raw V5 bytes and deserializing.
 ///
 /// # Panics
 ///
-/// If there are no `AuthorizedAction`s in `authorized_actions`.
+/// If there are no `Action`s in `actions`.
 fn transaction_v5_with_orchard_shielded_data(
-    orchard_shielded_data: impl Into<Option<orchard::ShieldedData>>,
-    authorized_actions: impl IntoIterator<Item = orchard::AuthorizedAction>,
+    orchard_shielded_data: orchard::arbitrary::Bundle,
+    actions: impl IntoIterator<Item = orchard::arbitrary::Action>,
 ) -> Transaction {
-    let mut orchard_shielded_data = orchard_shielded_data.into();
-    let authorized_actions: Vec<_> = authorized_actions.into_iter().collect();
-
-    if let Some(ref mut orchard_shielded_data) = orchard_shielded_data {
-        // make sure there are no other nullifiers, by replacing all the authorized_actions
-        orchard_shielded_data.actions = authorized_actions.try_into().expect(
-            "unexpected invalid orchard::ShieldedData: must have at least one AuthorizedAction",
-        );
-
-        // set value balance to 0 to pass the chain value pool checks
-        let zero_amount = 0.try_into().expect("unexpected invalid zero amount");
-        orchard_shielded_data.value_balance = zero_amount;
-    }
-
-    // Build a V5 transaction by writing raw bytes with the orchard shielded data.
-    let mut bytes: Vec<u8> = Vec::new();
-    // V5 header: nVersion=5 overwintered, nVersionGroupId, nConsensusBranchId (Nu5), lockTime, expiryHeight
-    bytes.extend_from_slice(&0x8000_0005u32.to_le_bytes());
-    bytes.extend_from_slice(&0x26A7_270Au32.to_le_bytes());
-    bytes.extend_from_slice(&0xC2D6_D0B4u32.to_le_bytes()); // Nu5 branch ID
-    bytes.extend_from_slice(&500_000_000u32.to_le_bytes()); // nLockTime
-    bytes.extend_from_slice(&0u32.to_le_bytes()); // nExpiryHeight
-                                                  // No transparent inputs or outputs
-    bytes.push(0x00);
-    bytes.push(0x00);
-    // No sapling data: nSpendsSapling = 0, nOutputsSapling = 0
-    bytes.push(0x00);
-    bytes.push(0x00);
-    // Orchard data (via the ZcashSerialize impl for orchard::ShieldedData)
-    if let Some(ref sd) = orchard_shielded_data {
-        sd.zcash_serialize(&mut bytes)
-            .expect("orchard ShieldedData serialization should succeed");
-    } else {
-        // nActionsOrchard = 0
-        bytes.push(0x00);
-    }
-
-    Transaction::zcash_deserialize(bytes.as_slice())
-        .expect("manually constructed V5 transaction should deserialize")
+    Transaction::test_v5_with_orchard(
+        Nu5,
+        Vec::new(),
+        Vec::new(),
+        LockTime::min_lock_time_timestamp(),
+        Height(0),
+        Some(orchard::arbitrary::with_actions(
+            &orchard_shielded_data,
+            actions,
+        )),
+    )
 }

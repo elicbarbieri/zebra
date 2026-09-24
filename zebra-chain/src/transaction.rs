@@ -27,7 +27,6 @@ mod test_signing_tests;
 #[cfg(test)]
 mod tests;
 
-pub use crate::sapling::FieldNotPresent;
 pub use auth_digest::AuthDigest;
 pub use compat::{sprout_joinsplit_key_proof_and_ciphertexts, SPROUT_CIPHERTEXT_SIZE};
 pub use hash::{Hash, WtxId};
@@ -466,10 +465,7 @@ impl Transaction {
         self.orchard_bundle()
             .into_iter()
             .flat_map(|b| b.actions().iter())
-            .map(|action| {
-                crate::orchard::Nullifier::try_from(action.nullifier().to_bytes())
-                    .expect("orchard nullifier from valid transaction")
-            })
+            .map(|action| crate::orchard::Nullifier::from(*action.nullifier()))
     }
 
     /// Access the Orchard actions (librustzcash type).
@@ -533,11 +529,8 @@ impl Transaction {
 
     /// Access the Ironwood nullifiers in this transaction.
     pub fn ironwood_nullifiers(&self) -> impl Iterator<Item = crate::ironwood::Nullifier> + '_ {
-        self.ironwood_actions().map(|action| {
-            let nullifier = crate::orchard::Nullifier::try_from(action.nullifier().to_bytes())
-                .expect("ironwood nullifier from valid transaction");
-            crate::ironwood::Nullifier::from(nullifier)
-        })
+        self.ironwood_actions()
+            .map(|action| crate::orchard::Nullifier::from(*action.nullifier()).into())
     }
 
     /// Access the Ironwood actions (librustzcash type).
@@ -614,7 +607,7 @@ impl Transaction {
     pub fn orchard_proof_size_is_canonical(&self) -> bool {
         self.0.orchard_bundle().is_none_or(|bundle| {
             bundle.authorization().proof().as_ref().len()
-                == crate::orchard::shielded_data::expected_proof_size(bundle.actions().len())
+                == ::orchard::Proof::expected_proof_size(bundle.actions().len())
         })
     }
 
@@ -626,7 +619,7 @@ impl Transaction {
     pub fn ironwood_proof_size_is_canonical(&self) -> bool {
         self.0.ironwood_bundle().is_none_or(|bundle| {
             bundle.authorization().proof().as_ref().len()
-                == crate::orchard::shielded_data::expected_proof_size(bundle.actions().len())
+                == ::orchard::Proof::expected_proof_size(bundle.actions().len())
         })
     }
 
@@ -1354,6 +1347,36 @@ impl Transaction {
             None,
             None,
         );
+        Transaction(
+            tx_data
+                .freeze()
+                .expect("built from valid components")
+                .compress(),
+        )
+    }
+
+    /// Build a V4 (Canopy) transaction with a Sapling bundle, for tests.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    pub fn test_v4_with_sapling(
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+        sapling_bundle: Option<
+            sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>,
+        >,
+    ) -> Self {
+        let tx_data = zp_tx::TransactionData::from_parts(
+            zp_tx::TxVersion::V4,
+            zcash_protocol::consensus::BranchId::Canopy,
+            compat::lock_time_to_u32(&lock_time),
+            compat::height_to_block_height(expiry_height),
+            Self::transparent_bundle_from(inputs, outputs),
+            None,
+            sapling_bundle,
+            None,
+        );
+
         Transaction(
             tx_data
                 .freeze()
