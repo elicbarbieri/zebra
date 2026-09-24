@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: '`UnminedTx::transaction` is the decompressed `zcash_primitives::transaction::Transaction`, so every unmined transaction has had its point rules checked. Build one with `UnminedTx::try_from` a `CompressedTransaction` (fails on a bad point encoding) or `From` a decompressed transaction. `UnminedTx` equality compares `UnminedTxId`s. Added `ZcashDeserialize` for the decompressed transaction (parse, then decompress).'
+time: 2026-09-24T22:00:01.000000000Z

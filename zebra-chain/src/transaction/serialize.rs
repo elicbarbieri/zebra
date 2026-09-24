@@ -166,6 +166,23 @@ impl From<&Arc<CompressedTransaction>> for SerializedTransaction {
     }
 }
 
+/// Re-encodes the points (byte-identical to the parsed encoding)
+impl From<&zcash_primitives::transaction::Transaction> for SerializedTransaction {
+    fn from(tx: &zcash_primitives::transaction::Transaction) -> Self {
+        SerializedTransaction {
+            bytes: tx
+                .zcash_serialize_to_vec()
+                .expect("Writing to a `Vec` should never fail"),
+        }
+    }
+}
+
+impl From<Arc<zcash_primitives::transaction::Transaction>> for SerializedTransaction {
+    fn from(tx: Arc<zcash_primitives::transaction::Transaction>) -> Self {
+        tx.as_ref().into()
+    }
+}
+
 /// Access the serialized bytes of a [`SerializedTransaction`].
 impl AsRef<[u8]> for SerializedTransaction {
     fn as_ref(&self) -> &[u8] {

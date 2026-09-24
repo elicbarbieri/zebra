@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_in_result)]
 
 use std::{sync::Arc, time::Duration};
+use zebra_chain::transaction::UnminedTx;
 
 use color_eyre::Report;
 use tokio::time::{self, timeout};
@@ -1379,7 +1380,10 @@ async fn mempool_reverifies_after_tip_change() -> Result<(), Report> {
         .expect_request_that(|req| matches!(req, zn::Request::TransactionsById(_)))
         .map(|responder| {
             responder.respond(zn::Response::Transactions(vec![
-                zn::InventoryResponse::Available((tx.clone().into(), None)),
+                zn::InventoryResponse::Available((
+                    UnminedTx::try_from(tx.clone()).expect("test transactions decompress"),
+                    None,
+                )),
             ]));
         })
         .await;
@@ -1440,7 +1444,10 @@ async fn mempool_reverifies_after_tip_change() -> Result<(), Report> {
         .expect_request_that(|req| matches!(req, zn::Request::TransactionsById(_)))
         .map(|responder| {
             responder.respond(zn::Response::Transactions(vec![
-                zn::InventoryResponse::Available((tx.into(), None)),
+                zn::InventoryResponse::Available((
+                    UnminedTx::try_from(tx).expect("test transactions decompress"),
+                    None,
+                )),
             ]));
         })
         .await;
@@ -1645,13 +1652,16 @@ async fn mempool_reject_non_standard() -> Result<(), Report> {
 
     // Modify the transaction to make it non-standard.
     // This is done by replacing its outputs with a dust output.
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![transparent::Output {
         value: Amount::new(10), // this is below the dust threshold
         lock_script: p2pkh_script([0u8; 20]),
     }]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     // Set cost limit to the cost of the transaction we will try to insert.
     let cost_limit = last_transaction.cost();
@@ -1696,13 +1706,16 @@ async fn mempool_accept_standard_op_return() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![transparent::Output {
         value: Amount::new(0),
         lock_script: op_return_script(&[0x01]),
     }]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 
@@ -1737,13 +1750,16 @@ async fn mempool_reject_op_return_too_large() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![transparent::Output {
         value: Amount::new(0),
         lock_script: op_return_script(&[0x03]),
     }]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
     // Shrink the OP_RETURN size limit to trigger the oversized rejection path.
@@ -1792,8 +1808,10 @@ async fn mempool_reject_multi_op_return() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![
         transparent::Output {
             value: Amount::new(0),
@@ -1804,7 +1822,8 @@ async fn mempool_reject_multi_op_return() -> Result<(), Report> {
             lock_script: op_return_script(&[0x05]),
         },
     ]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 
@@ -1845,13 +1864,16 @@ async fn mempool_reject_non_standard_scriptpubkey() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![transparent::Output {
         value: Amount::new(1000),
         lock_script: transparent::Script::new(&[0x00]),
     }]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 
@@ -1894,13 +1916,16 @@ async fn mempool_reject_bare_multisig() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![transparent::Output {
         value: Amount::new(1000),
         lock_script: multisig_script(1, 1),
     }]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 
@@ -1941,13 +1966,16 @@ async fn mempool_reject_large_multisig() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     tx_mut.set_outputs(vec![transparent::Output {
         value: Amount::new(1000),
         lock_script: multisig_script(1, 4),
     }]);
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 
@@ -1987,10 +2015,13 @@ async fn mempool_reject_large_scriptsig() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     set_first_prevout_unlock_script(tx_mut, transparent::Script::new(&vec![0u8; 1651]));
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 
@@ -2030,10 +2061,13 @@ async fn mempool_reject_non_push_only_scriptsig() -> Result<(), Report> {
 
     last_transaction.height = Some(Height(100_000));
 
-    let mut tx = last_transaction.transaction.transaction.clone();
-    let tx_mut = Arc::make_mut(&mut tx);
+    let mut tx = (*last_transaction.transaction.transaction)
+        .clone()
+        .compress();
+    let tx_mut = &mut tx;
     set_first_prevout_unlock_script(tx_mut, transparent::Script::new(&[0xac]));
-    last_transaction.transaction.transaction = tx;
+    last_transaction.transaction.transaction =
+        Arc::new(tx.decompress().expect("test transactions decompress"));
 
     let cost_limit = last_transaction.cost();
 

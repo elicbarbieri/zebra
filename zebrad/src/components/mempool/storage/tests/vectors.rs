@@ -275,7 +275,7 @@ fn mempool_expired_basic_for_network(network: Network) -> Result<()> {
     // Insert the transaction into the mempool, with a fake zero miner fee and sigops
     storage.insert(
         VerifiedUnminedTx::new(
-            std::sync::Arc::new(tx).into(),
+            UnminedTx::try_from(std::sync::Arc::new(tx)).expect("test transactions decompress"),
             Amount::try_from(1_000_000).expect("valid amount"),
             0,
             0,

@@ -21,10 +21,10 @@ use crate::{
 /// This method checks for anchors computed from the final treestate of each block in
 /// the `parent_chain` or `finalized_state`.
 #[tracing::instrument(skip(finalized_state, parent_chain, transaction))]
-fn sapling_orchard_anchors_refer_to_final_treestates(
+fn sapling_orchard_anchors_refer_to_final_treestates<T: TransactionExt>(
     finalized_state: &ZebraDb,
     parent_chain: Option<&Arc<Chain>>,
-    transaction: &Arc<CompressedTransaction>,
+    transaction: &T,
     transaction_hash: TransactionHash,
     tx_index_in_block: Option<usize>,
     height: Option<Height>,
@@ -170,14 +170,14 @@ fn sapling_orchard_anchors_refer_to_final_treestates(
 /// `JoinSplit` _within the same transaction_; these are created on the fly
 /// in [`sprout_anchors_refer_to_treestates()`].
 #[tracing::instrument(skip(sprout_final_treestates, finalized_state, parent_chain, transaction))]
-fn fetch_sprout_final_treestates(
+fn fetch_sprout_final_treestates<T: TransactionExt>(
     sprout_final_treestates: &mut HashMap<
         sprout::tree::Root,
         Arc<sprout::tree::NoteCommitmentTree>,
     >,
     finalized_state: &ZebraDb,
     parent_chain: Option<&Arc<Chain>>,
-    transaction: &Arc<CompressedTransaction>,
+    transaction: &T,
     tx_index_in_block: Option<usize>,
     height: Option<Height>,
 ) {
@@ -227,9 +227,9 @@ fn fetch_sprout_final_treestates(
 /// see [`fetch_sprout_final_treestates()`]); or in the interstitial
 /// treestates which are computed on the fly in this function.
 #[tracing::instrument(skip(sprout_final_treestates, transaction))]
-fn sprout_anchors_refer_to_treestates(
+fn sprout_anchors_refer_to_treestates<T: TransactionExt>(
     sprout_final_treestates: &HashMap<sprout::tree::Root, Arc<sprout::tree::NoteCommitmentTree>>,
-    transaction: &Arc<CompressedTransaction>,
+    transaction: &T,
     transaction_hash: TransactionHash,
     tx_index_in_block: Option<usize>,
     height: Option<Height>,
@@ -367,7 +367,7 @@ pub(crate) fn block_sapling_orchard_anchors_refer_to_final_treestates(
             sapling_orchard_anchors_refer_to_final_treestates(
                 finalized_state,
                 Some(parent_chain),
-                transaction,
+                transaction.as_ref(),
                 semantically_verified.transaction_hashes[tx_index_in_block],
                 Some(tx_index_in_block),
                 Some(semantically_verified.height),
@@ -401,7 +401,7 @@ pub(crate) fn block_fetch_sprout_final_treestates(
             &mut sprout_final_treestates,
             finalized_state,
             Some(parent_chain),
-            transaction,
+            transaction.as_ref(),
             Some(tx_index_in_block),
             Some(semantically_verified.height),
         );
@@ -438,17 +438,18 @@ pub(crate) fn block_sprout_anchors_refer_to_treestates(
         "received sprout final treestate anchors",
     );
 
-    let check_tx_sprout_anchors = |(tx_index_in_block, transaction)| {
-        sprout_anchors_refer_to_treestates(
-            &sprout_final_treestates,
-            transaction,
-            transaction_hashes[tx_index_in_block],
-            Some(tx_index_in_block),
-            Some(height),
-        )?;
+    let check_tx_sprout_anchors =
+        |(tx_index_in_block, transaction): (usize, &Arc<CompressedTransaction>)| {
+            sprout_anchors_refer_to_treestates(
+                &sprout_final_treestates,
+                transaction.as_ref(),
+                transaction_hashes[tx_index_in_block],
+                Some(tx_index_in_block),
+                Some(height),
+            )?;
 
-        Ok(())
-    };
+            Ok(())
+        };
 
     // The overhead for a parallel iterator is unwarranted if sprout_final_treestates is empty
     // because it will either return an error for the first transaction or only check that `joinsplit_data`
@@ -484,7 +485,7 @@ pub(crate) fn tx_anchors_refer_to_final_treestates(
     sapling_orchard_anchors_refer_to_final_treestates(
         finalized_state,
         parent_chain,
-        &unmined_tx.transaction,
+        unmined_tx.transaction.as_ref(),
         unmined_tx.id.mined_id(),
         None,
         None,
@@ -498,7 +499,7 @@ pub(crate) fn tx_anchors_refer_to_final_treestates(
             &mut sprout_final_treestates,
             finalized_state,
             parent_chain,
-            &unmined_tx.transaction,
+            unmined_tx.transaction.as_ref(),
             None,
             None,
         );
@@ -518,7 +519,7 @@ pub(crate) fn tx_anchors_refer_to_final_treestates(
 
                 sprout_anchors_result = Some(sprout_anchors_refer_to_treestates(
                     &sprout_final_treestates,
-                    &unmined_tx.transaction,
+                    unmined_tx.transaction.as_ref(),
                     unmined_tx.id.mined_id(),
                     None,
                     None,

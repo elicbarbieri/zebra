@@ -1,4 +1,0 @@
-project: zebra-script
-kind: Added
-body: '`CachedFfiTransaction::from_decompressed`, for a caller that already checked the point rules with `Transaction::decompress`.'
-time: 2026-09-24T19:00:00.000000000Z

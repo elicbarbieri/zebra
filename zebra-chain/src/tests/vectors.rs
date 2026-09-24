@@ -67,7 +67,9 @@ impl Network {
         // the correct fee.
         selected_blocks
             .flat_map(|block| block.transactions)
-            .map(UnminedTx::from)
+            .map(|transaction| {
+                UnminedTx::try_from(transaction).expect("test vector transactions decompress")
+            })
             // Skip transactions that fail ZIP-317 mempool checks
             .filter_map(|transaction| {
                 VerifiedUnminedTx::new(

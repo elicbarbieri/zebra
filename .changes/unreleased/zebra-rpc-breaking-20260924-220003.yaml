@@ -1,0 +1,4 @@
+project: zebra-rpc
+kind: breaking
+body: '`queue::Queue` stores `UnminedTx`s (`transactions` returns them), so retries never decompress again.'
+time: 2026-09-24T22:00:03.000000000Z

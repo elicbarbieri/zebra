@@ -19,10 +19,7 @@ use thiserror::Error;
 use zcash_script::solver;
 use zebra_chain::{
     block::Height,
-    transaction::{
-        self, CompressedTransaction, Hash, TransactionExt, UnminedTx, UnminedTxId,
-        VerifiedUnminedTx,
-    },
+    transaction::{self, Hash, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx},
     transparent,
 };
 use zebra_node_services::mempool::TransactionDependencies;
@@ -543,10 +540,10 @@ impl Storage {
     /// nullifiers from the passed in `transactions`.
     ///
     /// Returns the number of transactions that were removed.
-    pub fn reject_and_remove_same_effects(
+    pub fn reject_and_remove_same_effects<T: TransactionExt>(
         &mut self,
         mined_ids: &HashSet<transaction::Hash>,
-        transactions: Vec<Arc<CompressedTransaction>>,
+        transactions: Vec<Arc<T>>,
     ) -> RemovedTransactionIds {
         let removed_mined = self
             .verified
