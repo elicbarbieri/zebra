@@ -111,7 +111,8 @@ pub fn standard_verified_unmined_tx_strategy() -> BoxedStrategy<VerifiedUnminedT
         .prop_map(|mut transaction| {
             standardize_transaction(&mut transaction);
 
-            let unmined_tx = UnminedTx::from(std::sync::Arc::new(transaction));
+            let unmined_tx = UnminedTx::try_from(std::sync::Arc::new(transaction))
+                .expect("test transactions decompress");
             let miner_fee = unmined_tx.conventional_fee;
 
             VerifiedUnminedTx::new(unmined_tx, miner_fee, 0, 0, std::sync::Arc::new(vec![]))

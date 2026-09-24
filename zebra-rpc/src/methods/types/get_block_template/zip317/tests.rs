@@ -253,7 +253,8 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
         .map(|i| {
             let mut tx = transaction.clone();
             tx.set_expiry_height(Height(2_000 + i));
-            let tx = zebra_chain::transaction::UnminedTx::from(Arc::new(tx));
+            let tx = zebra_chain::transaction::UnminedTx::try_from(Arc::new(tx))
+                .expect("test transactions decompress");
             let fee = tx.conventional_fee;
             VerifiedUnminedTx::new(tx, fee, 0, 0, Arc::new(vec![])).unwrap()
         })

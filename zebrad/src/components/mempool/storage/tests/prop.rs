@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_in_result)]
 
 use std::{collections::HashSet, env, fmt::Debug, thread, time::Duration};
+use zebra_chain::transaction::UnminedTx;
 
 use proptest::{collection::vec, prelude::*};
 use proptest_derive::Arbitrary;
@@ -391,7 +392,7 @@ proptest! {
         match &input {
             RemoveExact { wtx_ids_to_remove, .. } => storage.remove_exact(wtx_ids_to_remove),
             RejectAndRemoveSameEffects { mined_ids_to_remove, .. } => {
-                let num_removals = storage.reject_and_remove_same_effects(mined_ids_to_remove, vec![]).total_len();
+                let num_removals = storage.reject_and_remove_same_effects(mined_ids_to_remove, Vec::<std::sync::Arc<CompressedTransaction>>::new()).total_len();
                 for &removed_transaction_id in mined_ids_to_remove.iter() {
                     prop_assert_eq!(
                         storage.rejection_error(&UnminedTxId::Legacy(removed_transaction_id)),
@@ -478,7 +479,8 @@ impl SpendConflictTestInput {
 
         (
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(first).into(),
+                UnminedTx::try_from(std::sync::Arc::new(first))
+                    .expect("test transactions decompress"),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -487,7 +489,8 @@ impl SpendConflictTestInput {
             )
             .expect("verification should pass"),
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(second).into(),
+                UnminedTx::try_from(std::sync::Arc::new(second))
+                    .expect("test transactions decompress"),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -512,7 +515,8 @@ impl SpendConflictTestInput {
 
         (
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(first).into(),
+                UnminedTx::try_from(std::sync::Arc::new(first))
+                    .expect("test transactions decompress"),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -521,7 +525,8 @@ impl SpendConflictTestInput {
             )
             .expect("verification should pass"),
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(second).into(),
+                UnminedTx::try_from(std::sync::Arc::new(second))
+                    .expect("test transactions decompress"),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,

@@ -118,7 +118,8 @@ fn template_reports_selected_transaction_dependencies() {
             Height(100),
         );
         VerifiedUnminedTx::new(
-            std::sync::Arc::new(tx).into(),
+            transaction::UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             10_000u64.try_into().unwrap(),
             0,
             0,

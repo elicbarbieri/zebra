@@ -11,6 +11,7 @@ use std::{
 
 use chrono::{DateTime, Utc};
 
+use orchard::bundle::BundleEncoding as _;
 use zcash_script::{
     opcode::PossiblyBad,
     script::{self, Evaluable as _},
@@ -68,8 +69,8 @@ use crate::error::TransactionError;
 /// Using `median-time-past + 1s` (the next block's mintime) would also satisfy this consensus rule,
 /// but we prefer the rule implemented by `zcashd`'s mempool:
 /// <https://github.com/zcash/zcash/blob/9e1efad2d13dca5ee094a38e6aa25b0f2464da94/src/main.cpp#L776-L784>
-pub fn lock_time_has_passed(
-    tx: &CompressedTransaction,
+pub fn lock_time_has_passed<T: TransactionExt>(
+    tx: &T,
     block_height: Height,
     block_time: impl Into<Option<DateTime<Utc>>>,
 ) -> Result<(), TransactionError> {
@@ -127,7 +128,7 @@ pub fn lock_time_has_passed(
 /// <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
 ///
 /// This check counts both `Coinbase` and `PrevOut` transparent inputs.
-pub fn has_inputs_and_outputs(tx: &CompressedTransaction) -> Result<(), TransactionError> {
+pub fn has_inputs_and_outputs<T: TransactionExt>(tx: &T) -> Result<(), TransactionError> {
     if !tx.has_transparent_or_shielded_inputs() {
         Err(TransactionError::NoInputs)
     } else if !tx.has_transparent_or_shielded_outputs() {
@@ -146,7 +147,7 @@ pub fn has_inputs_and_outputs(tx: &CompressedTransaction) -> Result<(), Transact
 /// > [NU5 onward] If effectiveVersion >= 5 and nActionsOrchard > 0, then at least one of enableSpendsOrchard and enableOutputsOrchard MUST be 1.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
-pub fn has_enough_orchard_flags(tx: &CompressedTransaction) -> Result<(), TransactionError> {
+pub fn has_enough_orchard_flags<T: TransactionExt>(tx: &T) -> Result<(), TransactionError> {
     if !tx.has_enough_orchard_flags() {
         return Err(TransactionError::NotEnoughOrchardFlags);
     }
@@ -163,7 +164,7 @@ pub fn has_enough_orchard_flags(tx: &CompressedTransaction) -> Result<(), Transa
 /// <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
 ///
 /// (No-op for transactions without Ironwood actions, i.e. all pre-v6 transactions.)
-pub fn has_enough_ironwood_flags(tx: &CompressedTransaction) -> Result<(), TransactionError> {
+pub fn has_enough_ironwood_flags<T: TransactionExt>(tx: &T) -> Result<(), TransactionError> {
     if !tx.has_enough_ironwood_flags() {
         return Err(TransactionError::NotEnoughIronwoodFlags);
     }
@@ -181,7 +182,7 @@ pub fn has_enough_ironwood_flags(tx: &CompressedTransaction) -> Result<(), Trans
 /// An Orchard bundle can never carry this flag off the wire: bit 2 is rejected at deserialization
 /// for the Orchard pool in every tx version (only the Ironwood pool permits it). So this is a
 /// defense-in-depth check that also covers an in-memory-constructed bundle.
-pub fn orchard_cross_address_disabled(tx: &CompressedTransaction) -> Result<(), TransactionError> {
+pub fn orchard_cross_address_disabled<T: TransactionExt>(tx: &T) -> Result<(), TransactionError> {
     // Only the NU6.3-onward Orchard pool (`orchard_v3`) carries `enableCrossAddress` as a wire
     // flag that must be 0. Earlier Orchard revisions have no such bit — cross-address transfers
     // are unconditionally permitted and `Flags::cross_address_enabled` reports `true` for every
@@ -214,8 +215,8 @@ pub fn orchard_cross_address_disabled(tx: &CompressedTransaction) -> Result<(), 
 /// NU6.3 (so that non-upgraded hardware wallets can keep authorizing Orchard spends).
 ///
 /// (No-op for transactions without an Orchard bundle, and before NU6.3.)
-pub fn orchard_value_balance_non_negative(
-    tx: &CompressedTransaction,
+pub fn orchard_value_balance_non_negative<T: TransactionExt>(
+    tx: &T,
     network_upgrade: NetworkUpgrade,
 ) -> Result<(), TransactionError> {
     if network_upgrade >= NetworkUpgrade::Nu6_3
@@ -243,8 +244,8 @@ pub fn orchard_value_balance_non_negative(
 ///
 /// (No-op for non-coinbase transactions, transactions without an Orchard component, and before
 /// NU6.3.)
-pub fn coinbase_orchard_component_empty(
-    tx: &CompressedTransaction,
+pub fn coinbase_orchard_component_empty<T: TransactionExt>(
+    tx: &T,
     network_upgrade: NetworkUpgrade,
 ) -> Result<(), TransactionError> {
     if network_upgrade >= NetworkUpgrade::Nu6_3
@@ -274,8 +275,8 @@ pub fn coinbase_orchard_component_empty(
 /// Zebra does not validate this last rule explicitly because we checkpoint until Canopy activation.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
-pub fn coinbase_tx_no_prevout_joinsplit_spend(
-    tx: &CompressedTransaction,
+pub fn coinbase_tx_no_prevout_joinsplit_spend<T: TransactionExt>(
+    tx: &T,
 ) -> Result<(), TransactionError> {
     if tx.is_coinbase() {
         if tx.joinsplit_count() > 0 {
@@ -314,7 +315,7 @@ pub fn coinbase_tx_no_prevout_joinsplit_spend(
 /// to zero.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#joinsplitdesc>
-pub fn joinsplit_has_vpub_zero(tx: &CompressedTransaction) -> Result<(), TransactionError> {
+pub fn joinsplit_has_vpub_zero<T: TransactionExt>(tx: &T) -> Result<(), TransactionError> {
     let vpub_old_values = tx.output_values_to_sprout();
     let vpub_new_values = tx.input_values_from_sprout();
 
@@ -337,8 +338,8 @@ pub fn joinsplit_has_vpub_zero(tx: &CompressedTransaction) -> Result<(), Transac
 ///
 /// <https://zips.z.cash/zip-0211>
 /// <https://zips.z.cash/protocol/protocol.pdf#joinsplitdesc>
-pub fn disabled_add_to_sprout_pool(
-    tx: &CompressedTransaction,
+pub fn disabled_add_to_sprout_pool<T: TransactionExt>(
+    tx: &T,
     height: Height,
     network: &Network,
 ) -> Result<(), TransactionError> {
@@ -381,7 +382,7 @@ pub fn disabled_add_to_sprout_pool(
 /// even if they have the same bit pattern.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#nullifierset>
-pub fn spend_conflicts(transaction: &CompressedTransaction) -> Result<(), TransactionError> {
+pub fn spend_conflicts<T: TransactionExt>(transaction: &T) -> Result<(), TransactionError> {
     use crate::error::TransactionError::*;
 
     // All the nullifier accessors yield owned values, so they are wrapped as `Cow::Owned`.
@@ -507,9 +508,9 @@ pub fn coinbase_outputs_are_decryptable(
 ///
 /// [7.1]: https://zips.z.cash/protocol/protocol.pdf#txnencodingandconsensus
 /// [ZIP-203]: https://zips.z.cash/zip-0203
-pub fn coinbase_expiry_height(
+pub fn coinbase_expiry_height<T: TransactionExt>(
     block_height: &Height,
-    coinbase: &CompressedTransaction,
+    coinbase: &T,
     network: &Network,
 ) -> Result<(), TransactionError> {
     let expiry_height = coinbase.expiry_height();
@@ -548,9 +549,9 @@ pub fn coinbase_expiry_height(
 ///
 /// [7.1]: https://zips.z.cash/protocol/protocol.pdf#txnencodingandconsensus
 /// [ZIP-203]: https://zips.z.cash/zip-0203
-pub fn non_coinbase_expiry_height(
+pub fn non_coinbase_expiry_height<T: TransactionExt>(
     block_height: &Height,
-    transaction: &CompressedTransaction,
+    transaction: &T,
 ) -> Result<(), TransactionError> {
     if transaction.is_overwintered() {
         let expiry_height = transaction.expiry_height();
@@ -584,11 +585,11 @@ pub fn non_coinbase_expiry_height(
 /// Only the `expiry_height` parameter is used for the check. The
 /// remaining parameters are used to give details about the error when the check
 /// fails.
-fn validate_expiry_height_max(
+fn validate_expiry_height_max<T: TransactionExt>(
     expiry_height: Option<Height>,
     is_coinbase: bool,
     block_height: &Height,
-    transaction: &CompressedTransaction,
+    transaction: &T,
 ) -> Result<(), TransactionError> {
     if let Some(expiry_height) = expiry_height {
         if expiry_height > Height::MAX_EXPIRY_HEIGHT {
@@ -608,10 +609,10 @@ fn validate_expiry_height_max(
 ///
 /// The `transaction` parameter is only used to give details about the error
 /// when the check fails.
-fn validate_expiry_height_mined(
+fn validate_expiry_height_mined<T: TransactionExt>(
     expiry_height: Option<Height>,
     block_height: &Height,
-    transaction: &CompressedTransaction,
+    transaction: &T,
 ) -> Result<(), TransactionError> {
     if let Some(expiry_height) = expiry_height {
         if *block_height > expiry_height {
@@ -631,9 +632,9 @@ fn validate_expiry_height_mined(
 ///
 /// Returns `Ok(())` if spent transparent coinbase outputs are
 /// valid for the block height, or a [`Err(TransactionError)`](TransactionError)
-pub fn tx_transparent_coinbase_spends_maturity(
+pub fn tx_transparent_coinbase_spends_maturity<T: TransactionExt>(
     network: &Network,
-    tx: &CompressedTransaction,
+    tx: &T,
     height: Height,
     block_new_outputs: Arc<HashMap<transparent::OutPoint, transparent::OrderedUtxo>>,
     spent_utxos: &HashMap<transparent::OutPoint, transparent::Utxo>,
@@ -740,8 +741,8 @@ pub(super) fn count_script_push_ops(script_bytes: &[u8]) -> usize {
 ///
 /// Callers must ensure `spent_outputs.len()` matches the number of transparent inputs.
 /// If the lengths differ, `false` is returned.
-pub fn are_inputs_standard(
-    tx: &CompressedTransaction,
+pub fn are_inputs_standard<T: TransactionExt>(
+    tx: &T,
     spent_outputs: &[transparent::Output],
 ) -> bool {
     if tx.inputs().len() != spent_outputs.len() {
@@ -831,8 +832,8 @@ pub fn are_inputs_standard(
 ///
 /// `spent_outputs.len()` must equal the number of transparent inputs in `tx`: if the lengths
 /// differ, `zip()` silently truncates, and some inputs are not checked.
-pub fn mempool_standard_input_scripts(
-    tx: &CompressedTransaction,
+pub fn mempool_standard_input_scripts<T: TransactionExt>(
+    tx: &T,
     spent_outputs: &[transparent::Output],
 ) -> Result<(), TransactionError> {
     if tx.inputs().len() != spent_outputs.len() {
@@ -889,8 +890,8 @@ pub fn mempool_standard_input_scripts(
 ///
 /// [ZIP-244]: <https://zips.z.cash/zip-0244>
 /// [7.1.2 Transaction Consensus Rules]: <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
-pub fn consensus_branch_id(
-    tx: &CompressedTransaction,
+pub fn consensus_branch_id<T: TransactionExt>(
+    tx: &T,
     height: Height,
     network: &Network,
 ) -> Result<(), TransactionError> {

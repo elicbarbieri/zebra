@@ -31,7 +31,7 @@ use zebra_chain::{
             with_orchard_value_balance,
         },
         zip317, CompressedTransaction, Hash, HashType, LockTime, TransactionExt,
-        TransactionTestExt,
+        TransactionTestExt, UnminedTx,
     },
     transparent::{self, CoinbaseSpendRestriction},
 };
@@ -521,7 +521,7 @@ async fn mempool_request_with_missing_input_is_rejected() {
             .map(|responder| responder.respond(zebra_state::Response::UnspentBestChainUtxo(None)));
 
         let verifier_req = verifier.oneshot(MempoolRequest {
-            transaction: tx.into(),
+            transaction: UnminedTx::try_from(tx).expect("test transactions decompress"),
             height,
         });
 
@@ -637,7 +637,8 @@ async fn mempool_zip218_sapling_limit_precedes_state_and_proofs() {
         let result = timeout(
             test_timeout(),
             MempoolTxVerifier::new_for_tests(&network, state).oneshot(MempoolRequest {
-                transaction: Arc::new(transaction).into(),
+                transaction: UnminedTx::try_from(Arc::new(transaction))
+                    .expect("test transactions decompress"),
                 height,
             }),
         )
@@ -701,7 +702,8 @@ async fn mempool_request_with_present_input_is_accepted() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -776,7 +778,8 @@ async fn mempool_request_with_invalid_lock_time_is_rejected() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -839,7 +842,8 @@ async fn mempool_request_with_unlocked_lock_time_is_accepted() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -907,7 +911,8 @@ async fn mempool_request_with_lock_time_max_sequence_number_is_accepted() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -980,7 +985,8 @@ async fn mempool_request_with_past_lock_time_is_accepted() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -1071,7 +1077,8 @@ async fn mempool_request_with_unmined_output_spends_is_accepted() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -1199,7 +1206,8 @@ async fn block_verification_does_not_use_mempool_verified_state() {
     let verifier_response = mempool_verifier
         .clone()
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx.clone()).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx.clone()))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -1362,7 +1370,8 @@ async fn mempool_request_with_immature_spend_is_rejected() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await
@@ -1467,7 +1476,8 @@ async fn mempool_request_with_transparent_coinbase_spend_is_accepted_on_regtest(
 
     verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await
@@ -1533,7 +1543,8 @@ async fn state_error_converted_correctly() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -2039,7 +2050,8 @@ async fn transaction_with_out_of_range_expiry_height() {
             let mempool_verifier = MempoolTxVerifier::new_for_tests(&network, state.clone());
             let mempool_result = mempool_verifier
                 .oneshot(MempoolRequest {
-                    transaction: Arc::new(transaction.clone()).into(),
+                    transaction: UnminedTx::try_from(Arc::new(transaction.clone()))
+                        .expect("test transactions decompress"),
                     height: block_height,
                 })
                 .await;
@@ -3563,15 +3575,9 @@ async fn bad_point_is_rejected_before_any_state_lookup() {
         })
         .await;
 
-        let mempool_rsp = MempoolTxVerifier::new_for_tests(
-            &net,
-            service_fn(|_| async { unreachable!("State service should not be called") }),
-        )
-        .oneshot(MempoolRequest {
-            transaction: tx.clone().into(),
-            height,
-        })
-        .await;
+        // Mempool path: building the `UnminedTx` is the check (codec & RPC ingress), so a bad
+        // point never reaches the mempool verifier
+        let mempool_rsp = UnminedTx::try_from(tx.clone()).map_err(TransactionError::from);
 
         let bad_point = TransactionError::InvalidPointEncoding(BAD_SAPLING_CV.to_string());
         assert_eq!(block_rsp, Err(bad_point.clone()), "{net} block path");
@@ -3723,7 +3729,7 @@ async fn orchard_disabling_soft_fork_rejects_orchard_actions_in_blocks_and_mempo
         service_fn(|_| async { unreachable!("state service should not be called") }),
     )
     .oneshot(MempoolRequest {
-        transaction: Arc::new(tx).into(),
+        transaction: UnminedTx::try_from(Arc::new(tx)).expect("test transactions decompress"),
         height,
     })
     .await;
@@ -3813,7 +3819,8 @@ async fn orchard_disabling_soft_fork_accepts_non_orchard_transactions() {
 
     let response = verifier
         .oneshot(MempoolRequest {
-            transaction: Arc::new(transaction).into(),
+            transaction: UnminedTx::try_from(Arc::new(transaction))
+                .expect("test transactions decompress"),
             height: transaction_block_height,
         })
         .await;
@@ -3990,7 +3997,8 @@ async fn v5_consensus_branch_ids() {
             let mempool_req = mempool_verifier
                 .clone()
                 .oneshot(MempoolRequest {
-                    transaction: std::sync::Arc::new(tx.clone()).into(),
+                    transaction: UnminedTx::try_from(std::sync::Arc::new(tx.clone()))
+                        .expect("test transactions decompress"),
                     // The consensus branch ID of the tx is outdated for this height.
                     height,
                 })
@@ -4020,7 +4028,8 @@ async fn v5_consensus_branch_ids() {
             let mempool_req = mempool_verifier
                 .clone()
                 .oneshot(MempoolRequest {
-                    transaction: std::sync::Arc::new(tx.clone()).into(),
+                    transaction: UnminedTx::try_from(std::sync::Arc::new(tx.clone()))
+                        .expect("test transactions decompress"),
                     // The consensus branch ID of the tx is supported by this height.
                     height,
                 })
@@ -4076,7 +4085,8 @@ async fn v5_consensus_branch_ids() {
             let mempool_req = mempool_verifier
                 .clone()
                 .oneshot(MempoolRequest {
-                    transaction: std::sync::Arc::new(tx.clone()).into(),
+                    transaction: UnminedTx::try_from(std::sync::Arc::new(tx.clone()))
+                        .expect("test transactions decompress"),
                     // The consensus branch ID of the tx is not supported by this height.
                     height,
                 })
@@ -4228,7 +4238,7 @@ async fn v4_transaction_is_rejected_at_nu7_activation() {
     assert_eq!(
         mempool_verifier
             .oneshot(MempoolRequest {
-                transaction: tx.into(),
+                transaction: UnminedTx::try_from(tx).expect("test transactions decompress"),
                 height: nu7_height,
             })
             .await
@@ -5356,7 +5366,8 @@ async fn mempool_zip317_error() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -5426,7 +5437,8 @@ async fn mempool_zip317_ok() {
 
     let verifier_response = verifier
         .oneshot(MempoolRequest {
-            transaction: std::sync::Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(std::sync::Arc::new(tx))
+                .expect("test transactions decompress"),
             height,
         })
         .await;
@@ -6066,7 +6078,8 @@ fn the_halo2_cache_is_reused_only_for_the_transaction_that_earned_it() {
                 respond_to_nullifier_and_anchor_check(&state);
                 mempool_verifier
                     .oneshot(MempoolRequest {
-                        transaction: Arc::new(tx.clone()).into(),
+                        transaction: UnminedTx::try_from(Arc::new(tx.clone()))
+                            .expect("test transactions decompress"),
                         height: expiry_height,
                     })
                     .await
@@ -6258,7 +6271,8 @@ fn the_sapling_cache_is_reused_only_for_the_transaction_that_earned_it() {
                 respond_to_nullifier_and_anchor_check(&state);
                 mempool_verifier
                     .oneshot(MempoolRequest {
-                        transaction: Arc::new(tx.clone()).into(),
+                        transaction: UnminedTx::try_from(Arc::new(tx.clone()))
+                            .expect("test transactions decompress"),
                         height: expiry_height,
                     })
                     .await
@@ -6374,7 +6388,8 @@ async fn tx_with_pre_activation_branch_id_is_rejected() {
         let mempool_verifier = MempoolTxVerifier::new_for_tests(&network, state.clone());
         let mempool_rsp = mempool_verifier
             .oneshot(MempoolRequest {
-                transaction: Arc::new(tx.clone()).into(),
+                transaction: UnminedTx::try_from(Arc::new(tx.clone()))
+                    .expect("test transactions decompress"),
                 height,
             })
             .await;
@@ -6443,7 +6458,7 @@ async fn null_prevout_hash_with_other_index_is_not_coinbase() {
         .map(|responder| responder.respond(zebra_state::Response::UnspentBestChainUtxo(None)));
 
     let verifier_req = verifier.oneshot(MempoolRequest {
-        transaction: Arc::new(tx).into(),
+        transaction: UnminedTx::try_from(Arc::new(tx)).expect("test transactions decompress"),
         height,
     });
 
@@ -6560,7 +6575,7 @@ async fn non_coinbase_with_null_prevout_input_is_rejected() {
     let state: MockService<_, _, _, _> = MockService::build().for_unit_tests();
     let rsp = MempoolTxVerifier::new_for_tests(&network, state)
         .oneshot(MempoolRequest {
-            transaction: Arc::new(tx).into(),
+            transaction: UnminedTx::try_from(Arc::new(tx)).expect("test transactions decompress"),
             height,
         })
         .await;

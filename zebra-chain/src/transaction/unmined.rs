@@ -17,11 +17,13 @@
 
 use std::{fmt, sync::Arc};
 
+use zcash_primitives::transaction as zp_tx;
+
 use crate::{
     amount::{Amount, NonNegative},
     block::Height,
     serialization::ZcashSerialize,
-    transaction::{AuthDigest, CompressedTransaction, Hash, WtxId},
+    transaction::{AuthDigest, CompressedTransaction, Hash, TransactionExt, WtxId},
     transparent,
 };
 
@@ -211,12 +213,12 @@ impl UnminedTxId {
 
 /// An unmined transaction, and its pre-calculated unique identifying ID.
 ///
-/// This transaction has been structurally verified.
+/// This transaction has been structurally verified, and its point rules checked (decompressed).
 /// (But it might still need semantic or contextual verification.)
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone)]
 pub struct UnminedTx {
-    /// The unmined transaction itself.
-    pub transaction: Arc<CompressedTransaction>,
+    /// The unmined transaction itself, decompressed.
+    pub transaction: Arc<zp_tx::Transaction>,
 
     /// A unique identifier for this unmined transaction.
     pub id: UnminedTxId,
@@ -229,6 +231,26 @@ pub struct UnminedTx {
     /// [ZIP-317]: https://zips.z.cash/zip-0317#fee-calculation
     pub conventional_fee: Amount<NonNegative>,
 }
+
+impl UnminedTx {
+    fn with_size(transaction: Arc<zp_tx::Transaction>, size: usize) -> Self {
+        Self {
+            id: transaction.unmined_id(),
+            conventional_fee: zip317::conventional_fee(transaction.as_ref()),
+            size,
+            transaction,
+        }
+    }
+}
+
+/// Same transaction iff same [`UnminedTxId`] (txid & authorizing data)
+impl PartialEq for UnminedTx {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for UnminedTx {}
 
 impl fmt::Debug for UnminedTx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -244,31 +266,33 @@ impl fmt::Display for UnminedTx {
     }
 }
 
-impl From<Arc<CompressedTransaction>> for UnminedTx {
-    fn from(transaction: Arc<CompressedTransaction>) -> Self {
-        let size = transaction.zcash_serialized_size();
-        let conventional_fee = zip317::conventional_fee(&transaction);
+/// Decompresses `transaction`, checking its point rules
+impl TryFrom<Arc<CompressedTransaction>> for UnminedTx {
+    type Error = zp_tx::DecompressionError;
 
-        Self {
-            id: transaction.as_ref().into(),
-            size,
-            conventional_fee,
-            transaction,
-        }
+    fn try_from(transaction: Arc<CompressedTransaction>) -> Result<Self, Self::Error> {
+        let size = transaction.zcash_serialized_size();
+        let transaction = Arc::unwrap_or_clone(transaction).decompress()?;
+
+        Ok(Self::with_size(Arc::new(transaction), size))
     }
 }
 
-impl From<&Arc<CompressedTransaction>> for UnminedTx {
-    fn from(transaction: &Arc<CompressedTransaction>) -> Self {
-        let size = transaction.zcash_serialized_size();
-        let conventional_fee = zip317::conventional_fee(transaction);
+/// Decompresses `transaction`, checking its point rules
+impl TryFrom<CompressedTransaction> for UnminedTx {
+    type Error = zp_tx::DecompressionError;
 
-        Self {
-            id: transaction.as_ref().into(),
-            size,
-            conventional_fee,
-            transaction: transaction.clone(),
-        }
+    fn try_from(transaction: CompressedTransaction) -> Result<Self, Self::Error> {
+        Arc::new(transaction).try_into()
+    }
+}
+
+/// Already decompressed (point rules hold)
+impl From<Arc<zp_tx::Transaction>> for UnminedTx {
+    fn from(transaction: Arc<zp_tx::Transaction>) -> Self {
+        let size = transaction.zcash_serialized_size();
+
+        Self::with_size(transaction, size)
     }
 }
 
@@ -366,7 +390,7 @@ impl VerifiedUnminedTx {
         spent_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<Self, zip317::Error> {
         let fee_weight_ratio = zip317::conventional_fee_weight_ratio(&transaction, miner_fee);
-        let conventional_actions = zip317::conventional_actions(&transaction.transaction);
+        let conventional_actions = zip317::conventional_actions(transaction.transaction.as_ref());
         let unpaid_actions = zip317::unpaid_actions(&transaction, miner_fee);
 
         zip317::mempool_checks(unpaid_actions, miner_fee, transaction.size)?;
