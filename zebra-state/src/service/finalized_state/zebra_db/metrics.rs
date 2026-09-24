@@ -3,6 +3,7 @@
 use zebra_chain::{
     amount::NonNegative,
     block::{self, Block},
+    transaction::TransactionExt,
     value_balance::ValueBalance,
 };
 

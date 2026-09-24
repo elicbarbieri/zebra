@@ -23,7 +23,7 @@ use zebra_chain::{
     block::Height,
     chain_tip::ChainTip,
     parameters::{Network, NetworkUpgrade},
-    transaction::{Transaction, UnminedTx, UnminedTxId},
+    transaction::{Transaction, TransactionExt, UnminedTx, UnminedTxId},
 };
 use zebra_node_services::{
     mempool::{Gossip, Request, Response},

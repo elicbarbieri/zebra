@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tracing::trace;
-use zebra_chain::transaction::Transaction;
+use zebra_chain::transaction::{Transaction, TransactionExt};
 
 use crate::{
     error::DuplicateNullifierError,

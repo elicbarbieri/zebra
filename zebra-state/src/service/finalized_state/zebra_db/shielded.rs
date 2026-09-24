@@ -24,7 +24,7 @@ use zebra_chain::{
     parameters::NetworkUpgrade,
     sapling, sprout,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
 };
 
 use crate::{

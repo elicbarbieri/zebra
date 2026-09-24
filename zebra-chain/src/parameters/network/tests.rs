@@ -17,6 +17,7 @@ use crate::{
         testnet::ConfiguredActivationHeights,
         NetworkUpgrade,
     },
+    transaction::TransactionExt,
 };
 
 #[test]

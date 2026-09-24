@@ -40,7 +40,7 @@ use zebra_chain::{
     parameters::Network,
     sapling,
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent,
 };
 

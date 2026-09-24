@@ -13,7 +13,7 @@ use crate::{
 use zebra_chain::{
     amount::{Amount, NonNegative},
     parameters::NetworkKind,
-    transaction::{Transaction, UnminedTx, VerifiedUnminedTx},
+    transaction::{Transaction, TransactionExt, UnminedTx, VerifiedUnminedTx},
     transparent::{self, Address},
 };
 

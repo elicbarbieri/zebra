@@ -17,7 +17,7 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
 };
 
 use crate::client::TransactionTemplate;

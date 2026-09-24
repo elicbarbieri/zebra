@@ -23,6 +23,7 @@ use zebra_chain::{
     },
     parameters::Network::{self, *},
     serialization::{ZcashDeserializeInto, ZcashSerialize},
+    transaction::TransactionExt,
     transparent::new_ordered_outputs_with_height,
 };
 use zebra_test::vectors::{MAINNET_BLOCKS, TESTNET_BLOCKS};

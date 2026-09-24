@@ -25,7 +25,7 @@ use zebra_chain::{
     serialization::ZcashSerialize as _,
     sprout,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
     work::difficulty::PartialCumulativeWork,

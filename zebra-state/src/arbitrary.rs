@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zebra_chain::{
     amount::{Amount, DeferredPoolBalanceChange},
     block::{self, Block},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
 };

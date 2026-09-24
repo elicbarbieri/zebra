@@ -20,7 +20,7 @@ use zebra_chain::{
     block::{self, Block, Height},
     parameters::{Network, NetworkKind},
     serialization::ZcashDeserializeInto,
-    transaction::{self, LockTime, Transaction},
+    transaction::{self, LockTime, Transaction, TransactionExt},
     transparent::{
         self, new_ordered_outputs_with_height, Address, Input, OutPoint, Output, Script,
     },

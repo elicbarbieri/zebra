@@ -11,6 +11,7 @@ use zebra_test::prelude::*;
 use crate::{
     parameters::GENESIS_PREVIOUS_BLOCK_HASH,
     serialization::{SerializationError, ZcashDeserializeInto, ZcashSerialize},
+    transaction::TransactionExt,
 };
 
 use super::super::{

@@ -14,7 +14,7 @@ use zebra_chain::{
         arbitrary::{datetime_full, datetime_u32},
         DateTime32,
     },
-    transaction::{LockTime, Transaction, UnminedTx},
+    transaction::{LockTime, Transaction, TransactionExt, UnminedTx},
     transparent,
 };
 use zebra_state as zs;

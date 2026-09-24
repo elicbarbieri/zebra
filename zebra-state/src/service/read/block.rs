@@ -20,7 +20,7 @@ use zebra_chain::{
     block::{self, Block, Height, SerializedBlock},
     block_info::BlockInfo,
     serialization::ZcashSerialize as _,
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent::{self, Utxo},
 };
 

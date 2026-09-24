@@ -4,7 +4,7 @@ use crate::{
     block::{Block, Height},
     parameters::Network,
     serialization::{SerializationError, ZcashDeserialize, ZcashDeserializeInto},
-    transaction,
+    transaction::{self, TransactionExt},
     transparent::Input,
 };
 use hex::FromHex;

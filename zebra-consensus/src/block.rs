@@ -25,6 +25,7 @@ use zebra_chain::{
     amount::Amount,
     block,
     parameters::{subsidy::SubsidyError, Network},
+    transaction::TransactionExt,
     transparent,
     work::equihash,
 };

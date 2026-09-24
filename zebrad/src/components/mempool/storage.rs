@@ -19,7 +19,9 @@ use thiserror::Error;
 use zcash_script::solver;
 use zebra_chain::{
     block::Height,
-    transaction::{self, Hash, Transaction, UnminedTx, UnminedTxId, VerifiedUnminedTx},
+    transaction::{
+        self, Hash, Transaction, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx,
+    },
     transparent,
 };
 use zebra_node_services::mempool::TransactionDependencies;

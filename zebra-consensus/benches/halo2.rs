@@ -34,7 +34,8 @@ use std::sync::Arc;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
 use zebra_chain::{
-    block::Block, parameters::NetworkUpgrade, serialization::ZcashDeserializeInto, transparent,
+    block::Block, parameters::NetworkUpgrade, serialization::ZcashDeserializeInto,
+    transaction::TransactionExt, transparent,
 };
 
 use tower_batch_control::RequestWeight;

@@ -8,6 +8,7 @@ use zebra_chain::{
     block::{self, Block, ChainHistoryBlockTxAuthCommitmentHash, CommitmentError},
     history_tree::HistoryTree,
     parameters::{Network, NetworkUpgrade},
+    transaction::TransactionExt,
     work::difficulty::CompactDifficulty,
 };
 

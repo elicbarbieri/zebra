@@ -33,7 +33,7 @@ use zebra_chain::{
     serialization::{BytesInDisplayOrder, ZcashDeserializeInto},
     transaction::{
         arbitrary::with_garbage_orchard_authorization, AuthDigest, Hash, HashType, SigHash,
-        Transaction, WtxId,
+        Transaction, TransactionExt, WtxId,
     },
     transparent,
 };

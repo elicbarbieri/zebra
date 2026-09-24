@@ -48,7 +48,7 @@ use tracing_futures::Instrument;
 use zebra_chain::{
     block::Height,
     parameters::NetworkUpgrade,
-    transaction::{self, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, TransactionExt, UnminedTxId, VerifiedUnminedTx},
     transparent,
 };
 use zebra_consensus::transaction as tx;

@@ -30,7 +30,7 @@ use zebra_chain::{
             v5_transactions, with_garbage_orchard_authorization, with_orchard_flags,
             with_orchard_value_balance,
         },
-        zip317, Hash, HashType, LockTime, Transaction,
+        zip317, Hash, HashType, LockTime, Transaction, TransactionExt,
     },
     transparent::{self, CoinbaseSpendRestriction},
 };

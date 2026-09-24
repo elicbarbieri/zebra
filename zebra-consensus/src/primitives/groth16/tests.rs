@@ -14,7 +14,7 @@ use zcash_primitives::transaction::components::sprout::JsDescription;
 use zebra_chain::{
     block::Block,
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, TxVersion},
+    transaction::{Transaction, TransactionExt, TxVersion},
 };
 
 use crate::primitives::groth16::*;

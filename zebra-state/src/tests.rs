@@ -6,6 +6,7 @@ use std::{mem, sync::Arc};
 
 use zebra_chain::{
     block::Block,
+    transaction::TransactionExt,
     transparent,
     work::difficulty::ExpandedDifficulty,
     work::difficulty::{Work, U256},

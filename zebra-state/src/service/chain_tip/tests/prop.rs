@@ -11,6 +11,7 @@ use zebra_chain::{
     chain_tip::ChainTip,
     fmt::{DisplayToDebug, SummaryDebug},
     parameters::{Network, NetworkUpgrade},
+    transaction::TransactionExt,
 };
 
 use crate::service::chain_tip::{ChainTipBlock, ChainTipSender, TipAction};

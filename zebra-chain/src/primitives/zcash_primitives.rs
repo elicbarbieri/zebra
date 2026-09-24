@@ -10,7 +10,7 @@ use zcash_script::script;
 use crate::{
     amount::{Amount, NonNegative},
     serialization::ZcashSerialize,
-    transaction::{HashType, SigHash},
+    transaction::{HashType, SigHash, TransactionExt},
     transparent::{self, Script},
     Error,
 };
@@ -238,7 +238,7 @@ impl PrecomputedTxData {
         nu: NetworkUpgrade,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<PrecomputedTxData, Error> {
-        let branch_id = Self::sighash_branch_id(tx.version(), tx.consensus_branch_id(), nu)?;
+        let branch_id = Self::sighash_branch_id(tx.tx_version(), tx.consensus_branch_id(), nu)?;
 
         Self::from_decompressed_with_branch_id(tx, branch_id, all_previous_outputs)
     }

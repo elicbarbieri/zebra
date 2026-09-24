@@ -23,7 +23,7 @@ use zebra_chain::{
     amount::{self, Amount, Constraint, NonNegative},
     block::Height,
     parameters::Network,
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent::{self, Input},
 };
 

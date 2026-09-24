@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use zebra_chain::{
     amount,
+    transaction::TransactionExt,
     transparent::{self, utxos_from_ordered_utxos, CoinbaseSpendRestriction::*},
 };
 

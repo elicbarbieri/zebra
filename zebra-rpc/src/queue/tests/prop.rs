@@ -11,7 +11,7 @@ use tower::ServiceExt;
 use zebra_chain::{
     block::{Block, Height},
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, UnminedTx},
+    transaction::{Transaction, TransactionExt, UnminedTx},
 };
 use zebra_node_services::mempool::{Gossip, Request, Response};
 use zebra_state::{BoxError, ReadRequest, ReadResponse};

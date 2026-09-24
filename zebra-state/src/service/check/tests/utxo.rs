@@ -9,7 +9,7 @@ use zebra_chain::{
     block::{Block, Height},
     fmt::TypeNameToDebug,
     serialization::ZcashDeserializeInto,
-    transaction::{self, LockTime, Transaction},
+    transaction::{self, LockTime, Transaction, TransactionExt},
     transparent,
 };
 
