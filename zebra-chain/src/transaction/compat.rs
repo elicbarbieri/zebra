@@ -284,7 +284,9 @@ type OrchardBundle =
 /// queues that check when the bundle is present.
 ///
 /// Taking `ironwood_bundle` as a required argument is the point: the compiler will not let a
-/// caller forget to carry it across. This is the only place the version dispatch is made.
+/// caller forget to carry it across.
+///
+/// - Only version-dispatch sites: this & [`compressed_data_from_parts`] (compressed-tier twin)
 ///
 /// [`TransactionData`]: zcash_primitives::transaction::TransactionData
 /// [`TransactionData::from_parts`]: zcash_primitives::transaction::TransactionData::from_parts
@@ -319,6 +321,61 @@ pub(crate) fn transaction_data_from_parts(
         );
 
         zp_tx::TransactionData::from_parts(
+            version,
+            branch_id,
+            lock_time,
+            expiry_height,
+            transparent_bundle,
+            sprout_bundle,
+            sapling_bundle,
+            orchard_bundle,
+        )
+    }
+}
+
+#[cfg(any(test, feature = "proptest-impl"))]
+type SaplingBundleBytes = sapling_crypto::bundle::BundleBytes<
+    sapling_crypto::bundle::Authorized,
+    zcash_protocol::value::ZatBalance,
+>;
+
+#[cfg(any(test, feature = "proptest-impl"))]
+type OrchardBundleBytes =
+    orchard::BundleBytes<orchard::bundle::Authorized, zcash_protocol::value::ZatBalance>;
+
+/// [`transaction_data_from_parts`] on the compressed tier (the stored [`Transaction`] form)
+///
+/// [`Transaction`]: crate::transaction::Transaction
+#[cfg(any(test, feature = "proptest-impl"))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compressed_data_from_parts(
+    version: zp_tx::TxVersion,
+    branch_id: zcash_protocol::consensus::BranchId,
+    lock_time: u32,
+    expiry_height: zcash_protocol::consensus::BlockHeight,
+    transparent_bundle: Option<TransparentBundle>,
+    sprout_bundle: Option<zp_tx::components::sprout::Bundle>,
+    sapling_bundle: Option<SaplingBundleBytes>,
+    orchard_bundle: Option<OrchardBundleBytes>,
+    ironwood_bundle: Option<OrchardBundleBytes>,
+) -> zp_tx::CompressedTransactionData {
+    if version == zp_tx::TxVersion::V6 {
+        zp_tx::CompressedTransactionData::from_parts_v6(
+            branch_id,
+            lock_time,
+            expiry_height,
+            transparent_bundle,
+            sapling_bundle,
+            orchard_bundle,
+            ironwood_bundle,
+        )
+    } else {
+        debug_assert!(
+            ironwood_bundle.is_none(),
+            "only v6 transactions can carry an Ironwood bundle",
+        );
+
+        zp_tx::CompressedTransactionData::from_parts(
             version,
             branch_id,
             lock_time,

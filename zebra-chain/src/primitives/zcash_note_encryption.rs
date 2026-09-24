@@ -1,8 +1,6 @@
 //! Contains code that interfaces with the zcash_note_encryption crate from
 //! librustzcash.
 
-use std::ops::Deref;
-
 use crate::{
     block::Height,
     parameters::{Network, NetworkUpgrade},
@@ -11,8 +9,16 @@ use crate::{
 
 /// Returns true if all Sapling, Orchard, or Ironwood outputs, if any, decrypt successfully
 /// with an all-zeroes outgoing viewing key.
-pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height) -> bool {
+///
+/// - `Err` = point rules broken ([`Transaction::decompress`]), kept apart from undecryptable
+pub fn decrypts_successfully(
+    tx: &Transaction,
+    network: &Network,
+    height: Height,
+) -> Result<bool, zcash_primitives::transaction::DecompressionError> {
     let nu = NetworkUpgrade::current(network, height);
+
+    let tx = tx.decompress()?;
 
     let null_sapling_ovk = sapling_crypto::keys::OutgoingViewingKey([0u8; 32]);
 
@@ -24,7 +30,7 @@ pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height
         sapling_crypto::note_encryption::Zip212Enforcement::Off
     };
 
-    if let Some(bundle) = tx.inner().deref().sapling_bundle() {
+    if let Some(bundle) = tx.sapling_bundle() {
         for output in bundle.shielded_outputs().iter() {
             let recovery = sapling_crypto::note_encryption::try_sapling_output_recovery(
                 &null_sapling_ovk,
@@ -32,12 +38,12 @@ pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height
                 zip_212_enforcement,
             );
             if recovery.is_none() {
-                return false;
+                return Ok(false);
             }
         }
     }
 
-    if let Some(bundle) = tx.inner().deref().orchard_bundle() {
+    if let Some(bundle) = tx.orchard_bundle() {
         for act in bundle.actions() {
             if zcash_note_encryption::try_output_recovery_with_ovk(
                 &orchard::note_encryption::OrchardDomain::for_action(act),
@@ -48,7 +54,7 @@ pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height
             )
             .is_none()
             {
-                return false;
+                return Ok(false);
             }
         }
     }
@@ -67,10 +73,10 @@ pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height
             )
             .is_none()
             {
-                return false;
+                return Ok(false);
             }
         }
     }
 
-    true
+    Ok(true)
 }

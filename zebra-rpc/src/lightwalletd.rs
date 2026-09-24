@@ -57,7 +57,7 @@ pub(crate) fn has_nullifiers(tx: &Transaction) -> bool {
 /// Ironwood reuses the Orchard action encoding, so the same conversion serves both pools.
 /// If `nullifiers_only` is true, only the nullifier is included.
 fn compact_action(
-    action: &::orchard::Action<
+    action: &::orchard::ActionBytes<
         <::orchard::bundle::Authorized as ::orchard::bundle::Authorization>::SpendAuth,
     >,
     nullifiers_only: bool,

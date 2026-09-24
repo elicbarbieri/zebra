@@ -110,6 +110,32 @@ impl CachedFfiTransaction {
         })
     }
 
+    /// [`CachedFfiTransaction::new`] reusing points `Transaction::decompress` already checked
+    ///
+    /// # Panics
+    ///
+    /// If `decompressed` is not `transaction`'s decompressed form (txids differ).
+    pub fn from_decompressed(
+        transaction: Arc<zebra_chain::transaction::Transaction>,
+        decompressed: zcash_primitives::transaction::Transaction,
+        all_previous_outputs: Arc<Vec<transparent::Output>>,
+        nu: NetworkUpgrade,
+    ) -> Result<Self, Error> {
+        assert_eq!(
+            *decompressed.txid().as_ref(),
+            transaction.hash().0,
+            "decompressed form must come from the same transaction",
+        );
+
+        let sighasher =
+            SigHasher::from_decompressed(decompressed, nu, all_previous_outputs.clone())?;
+        Ok(Self {
+            transaction,
+            all_previous_outputs,
+            sighasher,
+        })
+    }
+
     /// Returns the transparent inputs of this transaction, borrowed from the underlying
     /// `zcash_primitives` transaction.
     fn vin(&self) -> &[zp_transparent::TxIn<zp_transparent::Authorized>] {

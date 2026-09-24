@@ -227,41 +227,63 @@ impl PrecomputedTxData {
         nu: NetworkUpgrade,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<PrecomputedTxData, Error> {
+        let branch_id = Self::sighash_branch_id(tx.tx_version(), tx.consensus_branch_id(), nu)?;
+
+        Self::from_decompressed_with_branch_id(tx.decompress()?, branch_id, all_previous_outputs)
+    }
+
+    /// [`PrecomputedTxData::new`] reusing points [`Transaction::decompress`] already checked
+    pub(crate) fn from_decompressed(
+        tx: zp_tx::Transaction,
+        nu: NetworkUpgrade,
+        all_previous_outputs: Arc<Vec<transparent::Output>>,
+    ) -> Result<PrecomputedTxData, Error> {
+        let branch_id = Self::sighash_branch_id(tx.version(), tx.consensus_branch_id(), nu)?;
+
+        Self::from_decompressed_with_branch_id(tx, branch_id, all_previous_outputs)
+    }
+
+    /// `nu`'s consensus branch ID, which V5+ transactions must also carry.
+    ///
+    /// V1-V4 transactions use `nu`'s branch ID for the sighash.
+    fn sighash_branch_id(
+        version: zp_tx::TxVersion,
+        tx_branch_id: zcash_protocol::consensus::BranchId,
+        nu: NetworkUpgrade,
+    ) -> Result<zcash_protocol::consensus::BranchId, Error> {
         let branch_id = nu
             .branch_id()
             .and_then(|cbid| zcash_protocol::consensus::BranchId::try_from(cbid).ok())
             .ok_or(Error::InvalidConsensusBranchId)?;
 
-        // For V5+ transactions, the branch_id is embedded and must match.
-        // For V4 transactions, use the network upgrade's branch_id for the sighash.
-        let tx_branch_id = tx.inner().deref().consensus_branch_id();
-        if tx.version() >= 5 && tx_branch_id != branch_id {
+        let embeds_branch_id = !matches!(
+            version,
+            zp_tx::TxVersion::Sprout(_) | zp_tx::TxVersion::V3 | zp_tx::TxVersion::V4
+        );
+        if embeds_branch_id && tx_branch_id != branch_id {
             return Err(Error::InvalidConsensusBranchId);
         }
 
-        Self::from_transaction_with_branch_id(tx, branch_id, all_previous_outputs)
+        Ok(branch_id)
     }
 
     /// Computes precomputed sighash data with an explicit consensus branch ID.
     ///
-    /// Clones the transaction to get an owned `TransactionData` for `map_authorization`,
-    /// reconstructing with the correct `branch_id` for V1-V4 sighash computation.
-    fn from_transaction_with_branch_id(
-        tx: &crate::transaction::Transaction,
+    /// Reconstructs the transaction with the correct `branch_id` for V1-V4 sighash computation.
+    fn from_decompressed_with_branch_id(
+        inner: zp_tx::Transaction,
         branch_id: zcash_protocol::consensus::BranchId,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<PrecomputedTxData, Error> {
-        let inner = tx.inner();
         let txid_parts = inner.deref().digest(zp_tx::txid::TxIdDigester);
 
-        // Clone the transaction to get an owned TransactionData we can transform.
         // Reconstruct with the correct branch_id (the stored value may differ for
         // V1-V4 transactions that were parsed without network context).
         //
         // The rebuild must preserve every bundle: losing the Ironwood one would leave
         // `PrecomputedTxData::ironwood_bundle` empty, and the verifier queues an Ironwood proof
         // check only when that returns `Some`.
-        let data = inner.clone().into_data();
+        let data = inner.into_data();
         let data_with_branch_id = crate::transaction::compat::transaction_data_from_parts(
             data.version(),
             branch_id,
