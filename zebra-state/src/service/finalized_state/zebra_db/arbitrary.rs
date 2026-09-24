@@ -4,7 +4,10 @@
 
 use std::ops::Deref;
 
-use zebra_chain::{amount::NonNegative, block::Block, sprout, value_balance::ValueBalance};
+use zebra_chain::{
+    amount::NonNegative, block::Block, sprout, transaction::TransactionExt,
+    value_balance::ValueBalance,
+};
 
 use crate::service::finalized_state::{
     disk_db::{DiskDb, DiskWriteBatch, WriteDisk},

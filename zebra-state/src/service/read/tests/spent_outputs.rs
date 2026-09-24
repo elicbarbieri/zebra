@@ -14,7 +14,7 @@ use zebra_chain::{
     block::{Block, Height},
     parameters::Network::Mainnet,
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
     transparent::{Input, OutPoint, Output, Script},
 };
 

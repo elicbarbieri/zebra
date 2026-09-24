@@ -3,7 +3,7 @@
 use crossbeam_channel::{Receiver, TryRecvError};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use zebra_chain::block::Height;
+use zebra_chain::{block::Height, transaction::TransactionExt};
 
 use crate::service::finalized_state::ZebraDb;
 

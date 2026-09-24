@@ -11,6 +11,7 @@ use crate::{
     parameters::{Network, NetworkUpgrade},
     serialization::ZcashDeserializeInto,
     sprout::{commitment::NoteCommitment, tests::test_vectors, tree},
+    transaction::TransactionExt,
 };
 
 /// Tests if empty roots are generated correctly.

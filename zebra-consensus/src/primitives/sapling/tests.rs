@@ -23,7 +23,7 @@ use zebra_chain::{
     block::{Block, Height},
     parameters::{Network, NetworkUpgrade},
     serialization::ZcashDeserializeInto,
-    transaction::{HashType, Transaction, TxVersion},
+    transaction::{HashType, Transaction, TransactionExt, TxVersion},
     transparent,
 };
 

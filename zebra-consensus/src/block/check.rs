@@ -11,7 +11,7 @@ use zebra_chain::{
         subsidy::{self, CoinbaseTransactionError},
         Network, NetworkUpgrade,
     },
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     work::{
         difficulty::{ExpandedDifficulty, ParameterDifficulty as _},
         equihash,

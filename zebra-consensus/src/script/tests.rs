@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use tower::ServiceExt;
 use zebra_chain::{
-    block::Block, parameters::NetworkUpgrade, serialization::ZcashDeserialize, transparent,
+    block::Block, parameters::NetworkUpgrade, serialization::ZcashDeserialize,
+    transaction::TransactionExt, transparent,
 };
 use zebra_script::CachedFfiTransaction;
 

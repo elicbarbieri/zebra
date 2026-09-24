@@ -4,6 +4,11 @@ use std::fmt;
 
 pub use zcash_primitives::transaction::TxVersion;
 
+use orchard::bundle::{ActionEncoding as _, BundleEncoding as OrchardBundleEncoding};
+use sapling_crypto::bundle::{
+    BundleEncoding as SaplingBundleEncoding, OutputDescriptionEncoding as _,
+    SpendDescriptionEncoding as _,
+};
 use zcash_primitives::transaction::{self as zp_tx};
 use zcash_protocol::value::ZatBalance;
 
@@ -68,39 +73,6 @@ impl Transaction {
         self.0.clone().decompress()
     }
 
-    /// Returns the transaction version.
-    pub fn tx_version(&self) -> TxVersion {
-        self.0.version()
-    }
-
-    /// Returns the numeric version of this transaction.
-    #[allow(unreachable_patterns)]
-    pub fn version(&self) -> u32 {
-        match self.0.version() {
-            TxVersion::Sprout(v) => v,
-            TxVersion::V3 => 3,
-            TxVersion::V4 => 4,
-            TxVersion::V5 => 5,
-            TxVersion::V6 => 6,
-            _ => panic!("unsupported transaction version"),
-        }
-    }
-
-    /// Returns `true` if this is an overwinter or later transaction.
-    pub fn is_overwintered(&self) -> bool {
-        !matches!(self.0.version(), TxVersion::Sprout(_))
-    }
-
-    /// Get the network upgrade for this transaction, if any (V5+).
-    #[allow(unreachable_patterns)]
-    pub fn network_upgrade(&self) -> Option<NetworkUpgrade> {
-        match self.tx_version() {
-            TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => None,
-            // V5+ transactions embed the consensus branch ID
-            _ => compat::branch_id_to_network_upgrade(self.0.consensus_branch_id()),
-        }
-    }
-
     /// Compute the sighash for this transaction.
     ///
     /// Returns an error if `network_upgrade` doesn't match the transaction's consensus branch ID.
@@ -125,10 +97,102 @@ impl Transaction {
     ) -> Result<sighash::SigHasher, Error> {
         sighash::SigHasher::new(self, network_upgrade, all_previous_outputs)
     }
+}
+
+/// Sapling spend of a [`TransactionExt`] tier
+pub type SaplingSpend<T> = <<T as TransactionExt>::Sapling as SaplingBundleEncoding<
+    sapling_crypto::bundle::Authorized,
+    ZatBalance,
+>>::Spend;
+
+/// Sapling output of a [`TransactionExt`] tier
+pub type SaplingOutput<T> = <<T as TransactionExt>::Sapling as SaplingBundleEncoding<
+    sapling_crypto::bundle::Authorized,
+    ZatBalance,
+>>::Output;
+
+/// Orchard or Ironwood action of a [`TransactionExt`] tier
+pub type OrchardAction<T> = <<T as TransactionExt>::Orchard as OrchardBundleEncoding<
+    ::orchard::bundle::Authorized,
+    ZatBalance,
+>>::Action;
+
+/// Zebra's transaction helpers, written once for both upstream tiers
+///
+/// - [`Transaction`] = compressed (stored, read, checkpoint-verified)
+/// - `zcash_primitives::transaction::Transaction` = decompressed (point rules checked)
+pub trait TransactionExt {
+    /// Sapling bundle of this tier
+    type Sapling: SaplingBundleEncoding<sapling_crypto::bundle::Authorized, ZatBalance>;
+    /// Orchard and Ironwood bundle of this tier
+    type Orchard: OrchardBundleEncoding<::orchard::bundle::Authorized, ZatBalance>;
+
+    /// Returns the transaction version.
+    fn tx_version(&self) -> TxVersion;
+
+    /// Consensus branch ID (encoded by v5+, parse-time context for v1-v4)
+    fn consensus_branch_id(&self) -> zcash_protocol::consensus::BranchId;
+
+    /// Get the raw lock time value as a `u32`.
+    fn raw_lock_time(&self) -> u32;
+
+    /// Raw `nExpiryHeight` (0 = no expiry)
+    fn raw_expiry_height(&self) -> u32;
+
+    /// Transparent bundle
+    fn transparent_bundle(
+        &self,
+    ) -> Option<&zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>>;
+
+    /// Sprout bundle
+    fn sprout_bundle(&self) -> Option<&zp_tx::components::sprout::Bundle>;
+
+    /// Sapling bundle
+    fn sapling_bundle(&self) -> Option<&Self::Sapling>;
+
+    /// Orchard bundle
+    fn orchard_bundle(&self) -> Option<&Self::Orchard>;
+
+    /// Ironwood bundle (NU6.3 onward)
+    fn ironwood_bundle(&self) -> Option<&Self::Orchard>;
+
+    /// Upstream transaction ID
+    fn txid(&self) -> zp_tx::TxId;
+
+    /// ZIP 244 authorizing-data commitment
+    fn auth_commitment(&self) -> blake2b_simd::Hash;
+
+    /// Returns the numeric version of this transaction.
+    #[allow(unreachable_patterns)]
+    fn version(&self) -> u32 {
+        match self.tx_version() {
+            TxVersion::Sprout(v) => v,
+            TxVersion::V3 => 3,
+            TxVersion::V4 => 4,
+            TxVersion::V5 => 5,
+            TxVersion::V6 => 6,
+            _ => panic!("unsupported transaction version"),
+        }
+    }
+
+    /// Returns `true` if this is an overwinter or later transaction.
+    fn is_overwintered(&self) -> bool {
+        !matches!(self.tx_version(), TxVersion::Sprout(_))
+    }
+
+    /// Get the network upgrade for this transaction, if any (V5+).
+    #[allow(unreachable_patterns)]
+    fn network_upgrade(&self) -> Option<NetworkUpgrade> {
+        match self.tx_version() {
+            TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => None,
+            // V5+ transactions embed the consensus branch ID
+            _ => compat::branch_id_to_network_upgrade(self.consensus_branch_id()),
+        }
+    }
 
     /// Get this transaction's lock time.
-    pub fn lock_time(&self) -> Option<LockTime> {
-        let lock_time = compat::u32_to_lock_time(self.0.lock_time());
+    fn lock_time(&self) -> Option<LockTime> {
+        let lock_time = compat::u32_to_lock_time(self.raw_lock_time());
 
         if lock_time == LockTime::unlocked() {
             return None;
@@ -147,13 +211,8 @@ impl Transaction {
         }
     }
 
-    /// Get the raw lock time value as a `u32`.
-    pub fn raw_lock_time(&self) -> u32 {
-        self.0.lock_time()
-    }
-
     /// Returns `true` if `lock_time` is a [`LockTime::Time`] and is not disabled by sequence numbers.
-    pub fn lock_time_is_time(&self) -> bool {
+    fn lock_time_is_time(&self) -> bool {
         matches!(self.lock_time(), Some(LockTime::Time(_)))
     }
 
@@ -165,10 +224,10 @@ impl Transaction {
     /// Returns the raw wire value, which can exceed [`block::Height::MAX`]: the ZIP-203
     /// maximum of 499,999,999 is a verifier rule, not a limit of this accessor, so an
     /// out-of-range value must reach the verifier to be rejected.
-    pub fn expiry_height(&self) -> Option<block::Height> {
+    fn expiry_height(&self) -> Option<block::Height> {
         match self.tx_version() {
             TxVersion::Sprout(_) => None,
-            _ => match u32::from(self.0.expiry_height()) {
+            _ => match self.raw_expiry_height() {
                 0 => None,
                 raw => Some(block::Height(raw)),
             },
@@ -176,7 +235,7 @@ impl Transaction {
     }
 
     /// Get the version group ID for this transaction, if any.
-    pub fn version_group_id(&self) -> Option<u32> {
+    fn version_group_id(&self) -> Option<u32> {
         match self.tx_version() {
             TxVersion::Sprout(_) => None,
             v => Some(v.version_group_id()),
@@ -184,8 +243,8 @@ impl Transaction {
     }
 
     /// Get the transparent inputs, converted to Zebra types.
-    pub fn inputs(&self) -> Vec<transparent::Input> {
-        let bundle = self.0.transparent_bundle();
+    fn inputs(&self) -> Vec<transparent::Input> {
+        let bundle = self.transparent_bundle();
         match bundle {
             Some(b) => b
                 .vin
@@ -200,8 +259,8 @@ impl Transaction {
     }
 
     /// Get the transparent outputs, converted to Zebra types.
-    pub fn outputs(&self) -> Vec<transparent::Output> {
-        let bundle = self.0.transparent_bundle();
+    fn outputs(&self) -> Vec<transparent::Output> {
+        let bundle = self.transparent_bundle();
         match bundle {
             Some(b) => b.vout.iter().map(compat::txout_to_output).collect(),
             None => Vec::new(),
@@ -209,22 +268,22 @@ impl Transaction {
     }
 
     /// Returns `true` if this transaction has transparent inputs.
-    pub fn has_transparent_inputs(&self) -> bool {
+    fn has_transparent_inputs(&self) -> bool {
         !self.inputs().is_empty()
     }
 
     /// Returns `true` if this transaction has transparent outputs.
-    pub fn has_transparent_outputs(&self) -> bool {
+    fn has_transparent_outputs(&self) -> bool {
         !self.outputs().is_empty()
     }
 
     /// Returns `true` if this transaction has transparent inputs or outputs.
-    pub fn has_transparent_inputs_or_outputs(&self) -> bool {
+    fn has_transparent_inputs_or_outputs(&self) -> bool {
         self.has_transparent_inputs() || self.has_transparent_outputs()
     }
 
     /// Returns `true` if this is a coinbase transaction.
-    pub fn is_coinbase(&self) -> bool {
+    fn is_coinbase(&self) -> bool {
         self.transparent_bundle().is_some_and(|b| b.is_coinbase())
     }
 
@@ -240,7 +299,7 @@ impl Transaction {
     /// Note that a transaction can return `false` from both [`Transaction::is_coinbase`] and
     /// this method, for example a transaction with a null-prevout input alongside other
     /// inputs. Such transactions are rejected by the verifier.
-    pub fn is_valid_non_coinbase(&self) -> bool {
+    fn is_valid_non_coinbase(&self) -> bool {
         self.transparent_bundle().is_none_or(|bundle| {
             bundle
                 .vin
@@ -250,26 +309,26 @@ impl Transaction {
     }
 
     /// Returns the outpoints spent by this transaction's transparent inputs.
-    pub fn spent_outpoints(&self) -> impl Iterator<Item = transparent::OutPoint> + '_ {
+    fn spent_outpoints(&self) -> impl Iterator<Item = transparent::OutPoint> + '_ {
         self.inputs()
             .into_iter()
             .filter_map(|input| input.outpoint())
     }
 
     /// Compute the hash (txid) of this transaction.
-    pub fn hash(&self) -> Hash {
-        let txid_bytes: [u8; 32] = *self.0.txid().as_ref();
+    fn hash(&self) -> Hash {
+        let txid_bytes: [u8; 32] = *self.txid().as_ref();
         Hash(txid_bytes)
     }
 
     /// Compute the authorizing data commitment for this transaction.
     ///
     /// Returns `None` for pre-V5 transactions (which don't have auth digests).
-    pub fn auth_digest(&self) -> Option<AuthDigest> {
+    fn auth_digest(&self) -> Option<AuthDigest> {
         match self.tx_version() {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => None,
             _ => {
-                let hash = self.0.auth_commitment();
+                let hash = self.auth_commitment();
                 let bytes: &[u8] = hash.as_ref();
                 let digest_bytes: [u8; 32] = bytes.try_into().ok()?;
                 Some(AuthDigest(digest_bytes))
@@ -278,7 +337,7 @@ impl Transaction {
     }
 
     /// Compute the unmined transaction ID for this transaction.
-    pub fn unmined_id(&self) -> UnminedTxId {
+    fn unmined_id(&self) -> UnminedTxId {
         match self.auth_digest() {
             Some(auth_digest) => UnminedTxId::Witnessed(WtxId {
                 id: self.hash(),
@@ -289,17 +348,17 @@ impl Transaction {
     }
 
     /// Returns the number of JoinSplit descriptions in this transaction.
-    pub fn joinsplit_count(&self) -> usize {
+    fn joinsplit_count(&self) -> usize {
         self.sprout_bundle().map_or(0, |b| b.joinsplits.len())
     }
 
     /// Returns `true` if this transaction has Sprout JoinSplit data.
-    pub fn has_sprout_joinsplit_data(&self) -> bool {
-        self.0.sprout_bundle().is_some()
+    fn has_sprout_joinsplit_data(&self) -> bool {
+        self.sprout_bundle().is_some()
     }
 
     /// Iterate over the Sprout JoinSplit descriptions (librustzcash type).
-    pub fn sprout_joinsplit_descriptions(
+    fn sprout_joinsplit_descriptions(
         &self,
     ) -> impl Iterator<Item = &zcash_primitives::transaction::components::sprout::JsDescription> + '_
     {
@@ -309,7 +368,7 @@ impl Transaction {
     }
 
     /// Access the Sprout nullifiers in this transaction.
-    pub fn sprout_nullifiers(&self) -> impl Iterator<Item = crate::sprout::Nullifier> + '_ {
+    fn sprout_nullifiers(&self) -> impl Iterator<Item = crate::sprout::Nullifier> + '_ {
         self.sprout_bundle()
             .into_iter()
             .flat_map(|b| b.joinsplits.iter())
@@ -318,7 +377,7 @@ impl Transaction {
     }
 
     /// Access the Sprout note commitments in this transaction.
-    pub fn sprout_note_commitments(
+    fn sprout_note_commitments(
         &self,
     ) -> impl Iterator<Item = crate::sprout::commitment::NoteCommitment> + '_ {
         self.sprout_bundle()
@@ -329,7 +388,7 @@ impl Transaction {
     }
 
     /// Returns vpub_old values (amounts entering the Sprout pool).
-    pub fn output_values_to_sprout(&self) -> Vec<i64> {
+    fn output_values_to_sprout(&self) -> Vec<i64> {
         self.sprout_bundle()
             .into_iter()
             .flat_map(|b| b.joinsplits.iter())
@@ -338,7 +397,7 @@ impl Transaction {
     }
 
     /// Returns vpub_new values (amounts leaving the Sprout pool).
-    pub fn input_values_from_sprout(&self) -> Vec<i64> {
+    fn input_values_from_sprout(&self) -> Vec<i64> {
         self.sprout_bundle()
             .into_iter()
             .flat_map(|b| b.joinsplits.iter())
@@ -347,20 +406,18 @@ impl Transaction {
     }
 
     /// Access the JoinSplit public validating key, if any.
-    pub fn sprout_joinsplit_pub_key(
-        &self,
-    ) -> Option<crate::primitives::ed25519::VerificationKeyBytes> {
+    fn sprout_joinsplit_pub_key(&self) -> Option<crate::primitives::ed25519::VerificationKeyBytes> {
         self.sprout_bundle()
             .map(|b| crate::primitives::ed25519::VerificationKeyBytes::from(b.joinsplit_pubkey))
     }
 
     /// Returns `true` if this transaction has Sapling shielded data.
-    pub fn has_sapling_shielded_data(&self) -> bool {
-        self.0.sapling_bundle().is_some()
+    fn has_sapling_shielded_data(&self) -> bool {
+        self.sapling_bundle().is_some()
     }
 
     /// Access the Sapling nullifiers in this transaction.
-    pub fn sapling_nullifiers(&self) -> impl Iterator<Item = crate::sapling::Nullifier> + '_ {
+    fn sapling_nullifiers(&self) -> impl Iterator<Item = crate::sapling::Nullifier> + '_ {
         self.sapling_bundle()
             .into_iter()
             .flat_map(|b| b.shielded_spends().iter())
@@ -371,44 +428,34 @@ impl Transaction {
     ///
     /// The spend description type uses `GrothProofBytes` for proofs and
     /// `redjubjub::Signature<SpendAuth>` for auth sigs.
-    pub fn sapling_spends(
-        &self,
-    ) -> impl Iterator<
-        Item = &sapling_crypto::bundle::SpendDescriptionBytes<sapling_crypto::bundle::Authorized>,
-    > + '_ {
+    fn sapling_spends(&self) -> impl Iterator<Item = &SaplingSpend<Self>> + '_ {
         self.sapling_bundle()
             .into_iter()
             .flat_map(|b| b.shielded_spends().iter())
     }
 
     /// Returns the number of Sapling spends.
-    pub fn sapling_spends_count(&self) -> usize {
+    fn sapling_spends_count(&self) -> usize {
         self.sapling_bundle()
             .map_or(0, |b| b.shielded_spends().len())
     }
 
     /// Access the Sapling output descriptions (librustzcash type).
-    pub fn sapling_outputs(
-        &self,
-    ) -> impl Iterator<
-        Item = &sapling_crypto::bundle::OutputDescriptionBytes<
-            sapling_crypto::bundle::GrothProofBytes,
-        >,
-    > + '_ {
+    fn sapling_outputs(&self) -> impl Iterator<Item = &SaplingOutput<Self>> + '_ {
         self.sapling_bundle()
             .into_iter()
             .flat_map(|b| b.shielded_outputs().iter())
     }
 
     /// Access the Sapling note commitments in this transaction.
-    pub fn sapling_note_commitments(
+    fn sapling_note_commitments(
         &self,
     ) -> impl Iterator<Item = sapling_crypto::note::ExtractedNoteCommitment> + '_ {
         self.sapling_outputs().map(|output| *output.cmu())
     }
 
     /// Iterate over deduplicated Sapling anchors as zebra tree roots.
-    pub fn sapling_anchors(&self) -> Vec<crate::sapling::tree::Root> {
+    fn sapling_anchors(&self) -> Vec<crate::sapling::tree::Root> {
         let mut seen = Vec::new();
         for spend in self.sapling_spends() {
             let bytes = spend.anchor().to_bytes();
@@ -422,7 +469,7 @@ impl Transaction {
     }
 
     /// Get the Sapling value balance.
-    pub fn sapling_value_balance(&self) -> ValueBalance<NegativeAllowed> {
+    fn sapling_value_balance(&self) -> ValueBalance<NegativeAllowed> {
         let balance = self
             .sapling_bundle()
             .map(|b| *b.value_balance())
@@ -435,12 +482,12 @@ impl Transaction {
     }
 
     /// Returns `true` if this transaction has Orchard shielded data.
-    pub fn has_orchard_shielded_data(&self) -> bool {
-        self.0.orchard_bundle().is_some()
+    fn has_orchard_shielded_data(&self) -> bool {
+        self.orchard_bundle().is_some()
     }
 
     /// Access the Orchard nullifiers in this transaction.
-    pub fn orchard_nullifiers(&self) -> impl Iterator<Item = crate::orchard::Nullifier> + '_ {
+    fn orchard_nullifiers(&self) -> impl Iterator<Item = crate::orchard::Nullifier> + '_ {
         self.orchard_bundle()
             .into_iter()
             .flat_map(|b| b.actions().iter())
@@ -448,40 +495,34 @@ impl Transaction {
     }
 
     /// Access the Orchard actions (librustzcash type).
-    pub fn orchard_actions(
-        &self,
-    ) -> impl Iterator<
-        Item = &::orchard::ActionBytes<
-            <::orchard::bundle::Authorized as ::orchard::bundle::Authorization>::SpendAuth,
-        >,
-    > + '_ {
+    fn orchard_actions(&self) -> impl Iterator<Item = &OrchardAction<Self>> + '_ {
         self.orchard_bundle()
             .into_iter()
             .flat_map(|b| b.actions().iter())
     }
 
     /// Access Orchard note commitments.
-    pub fn orchard_note_commitments(
+    fn orchard_note_commitments(
         &self,
     ) -> impl Iterator<Item = ::orchard::note::ExtractedNoteCommitment> + '_ {
         self.orchard_actions().map(|action| *action.cmx())
     }
 
     /// Access the Orchard flags, if any.
-    pub fn orchard_flags(&self) -> Option<::orchard::bundle::Flags> {
-        self.0.orchard_bundle().map(|b| *b.flags())
+    fn orchard_flags(&self) -> Option<::orchard::bundle::Flags> {
+        self.orchard_bundle().map(|b| *b.flags())
     }
 
     /// Access the Orchard anchor as a zebra tree root, if any.
-    pub fn orchard_anchor(&self) -> Option<crate::orchard::tree::Root> {
-        self.0.orchard_bundle().and_then(|b| {
+    fn orchard_anchor(&self) -> Option<crate::orchard::tree::Root> {
+        self.orchard_bundle().and_then(|b| {
             let bytes = b.anchor().to_bytes();
             crate::orchard::tree::Root::try_from(bytes).ok()
         })
     }
 
     /// Get the Orchard value balance.
-    pub fn orchard_value_balance(&self) -> ValueBalance<NegativeAllowed> {
+    fn orchard_value_balance(&self) -> ValueBalance<NegativeAllowed> {
         let balance = self
             .orchard_bundle()
             .map(|b| *b.value_balance())
@@ -502,45 +543,38 @@ impl Transaction {
     // interchanged.
 
     /// Returns `true` if this transaction has an Ironwood bundle.
-    pub fn has_ironwood_shielded_data(&self) -> bool {
-        self.0.ironwood_bundle().is_some()
+    fn has_ironwood_shielded_data(&self) -> bool {
+        self.ironwood_bundle().is_some()
     }
 
     /// Access the Ironwood nullifiers in this transaction.
-    pub fn ironwood_nullifiers(&self) -> impl Iterator<Item = crate::ironwood::Nullifier> + '_ {
+    fn ironwood_nullifiers(&self) -> impl Iterator<Item = crate::ironwood::Nullifier> + '_ {
         self.ironwood_actions()
             .map(|action| crate::orchard::Nullifier::from(*action.nullifier()).into())
     }
 
     /// Access the Ironwood actions (librustzcash type).
-    pub fn ironwood_actions(
-        &self,
-    ) -> impl Iterator<
-        Item = &::orchard::ActionBytes<
-            <::orchard::bundle::Authorized as ::orchard::bundle::Authorization>::SpendAuth,
-        >,
-    > + '_ {
-        self.0
-            .ironwood_bundle()
+    fn ironwood_actions(&self) -> impl Iterator<Item = &OrchardAction<Self>> + '_ {
+        self.ironwood_bundle()
             .into_iter()
             .flat_map(|b| b.actions().iter())
     }
 
     /// Access Ironwood note commitments.
-    pub fn ironwood_note_commitments(
+    fn ironwood_note_commitments(
         &self,
     ) -> impl Iterator<Item = ::orchard::note::ExtractedNoteCommitment> + '_ {
         self.ironwood_actions().map(|action| *action.cmx())
     }
 
     /// Access the Ironwood flags, if any.
-    pub fn ironwood_flags(&self) -> Option<::orchard::bundle::Flags> {
-        self.0.ironwood_bundle().map(|b| *b.flags())
+    fn ironwood_flags(&self) -> Option<::orchard::bundle::Flags> {
+        self.ironwood_bundle().map(|b| *b.flags())
     }
 
     /// Access the Ironwood anchor as a zebra tree root, if any.
-    pub fn ironwood_anchor(&self) -> Option<crate::orchard::tree::Root> {
-        self.0.ironwood_bundle().and_then(|b| {
+    fn ironwood_anchor(&self) -> Option<crate::orchard::tree::Root> {
+        self.ironwood_bundle().and_then(|b| {
             let bytes = b.anchor().to_bytes();
             crate::orchard::tree::Root::try_from(bytes).ok()
         })
@@ -548,7 +582,7 @@ impl Transaction {
 
     /// Returns `true` unless this transaction has an Ironwood bundle that enables neither
     /// spends nor outputs.
-    pub fn has_enough_ironwood_flags(&self) -> bool {
+    fn has_enough_ironwood_flags(&self) -> bool {
         if !self.has_ironwood_shielded_data() {
             return true;
         }
@@ -564,9 +598,8 @@ impl Transaction {
     /// Ironwood pool. This is zero for transactions without an Ironwood bundle.
     ///
     /// <https://zebra.zfnd.org/dev/rfcs/0012-value-pools.html#definitions>
-    pub fn ironwood_value_balance(&self) -> ValueBalance<NegativeAllowed> {
+    fn ironwood_value_balance(&self) -> ValueBalance<NegativeAllowed> {
         let balance = self
-            .0
             .ironwood_bundle()
             .map(|b| *b.value_balance())
             .unwrap_or(ZatBalance::zero());
@@ -583,8 +616,8 @@ impl Transaction {
     /// A proof that is present but not canonically sized can be padded with arbitrary trailing
     /// data without affecting its validity (GHSA-jfw5-j458-pfv6). Bundles are deserialized
     /// leniently, so this is checked by the verifier rather than during parsing.
-    pub fn orchard_proof_size_is_canonical(&self) -> bool {
-        self.0.orchard_bundle().is_none_or(|bundle| {
+    fn orchard_proof_size_is_canonical(&self) -> bool {
+        self.orchard_bundle().is_none_or(|bundle| {
             bundle.authorization().proof().as_ref().len()
                 == ::orchard::Proof::expected_proof_size(bundle.actions().len())
         })
@@ -595,15 +628,15 @@ impl Transaction {
     ///
     /// See [`Self::orchard_proof_size_is_canonical`]; Ironwood reuses the Orchard circuit, so it
     /// has the same expected proof size.
-    pub fn ironwood_proof_size_is_canonical(&self) -> bool {
-        self.0.ironwood_bundle().is_none_or(|bundle| {
+    fn ironwood_proof_size_is_canonical(&self) -> bool {
+        self.ironwood_bundle().is_none_or(|bundle| {
             bundle.authorization().proof().as_ref().len()
                 == ::orchard::Proof::expected_proof_size(bundle.actions().len())
         })
     }
 
     /// Returns `true` if this transaction has shielded inputs.
-    pub fn has_shielded_inputs(&self) -> bool {
+    fn has_shielded_inputs(&self) -> bool {
         self.has_sprout_joinsplit_data()
             || self
                 .sapling_bundle()
@@ -612,13 +645,12 @@ impl Transaction {
                 .orchard_bundle()
                 .is_some_and(|b| b.flags().spends_enabled() && !b.actions().is_empty())
             || self
-                .0
                 .ironwood_bundle()
                 .is_some_and(|b| b.flags().spends_enabled() && !b.actions().is_empty())
     }
 
     /// Returns `true` if this transaction has shielded outputs.
-    pub fn has_shielded_outputs(&self) -> bool {
+    fn has_shielded_outputs(&self) -> bool {
         self.has_sprout_joinsplit_data()
             || self
                 .sapling_bundle()
@@ -627,29 +659,28 @@ impl Transaction {
                 .orchard_bundle()
                 .is_some_and(|b| b.flags().outputs_enabled() && !b.actions().is_empty())
             || self
-                .0
                 .ironwood_bundle()
                 .is_some_and(|b| b.flags().outputs_enabled() && !b.actions().is_empty())
     }
 
     /// Does this transaction have shielded inputs or outputs?
-    pub fn has_shielded_data(&self) -> bool {
+    fn has_shielded_data(&self) -> bool {
         self.has_shielded_inputs() || self.has_shielded_outputs()
     }
 
     /// Returns `true` if this transaction has transparent or shielded inputs.
-    pub fn has_transparent_or_shielded_inputs(&self) -> bool {
+    fn has_transparent_or_shielded_inputs(&self) -> bool {
         self.has_transparent_inputs() || self.has_shielded_inputs()
     }
 
     /// Returns `true` if this transaction has transparent or shielded outputs.
-    pub fn has_transparent_or_shielded_outputs(&self) -> bool {
+    fn has_transparent_or_shielded_outputs(&self) -> bool {
         self.has_transparent_outputs() || self.has_shielded_outputs()
     }
 
     /// Returns `true` if the Orchard flags are consistent.
-    pub fn has_enough_orchard_flags(&self) -> bool {
-        match self.0.orchard_bundle() {
+    fn has_enough_orchard_flags(&self) -> bool {
+        match self.orchard_bundle() {
             Some(bundle) => {
                 let flags = bundle.flags();
                 flags.spends_enabled() || flags.outputs_enabled()
@@ -661,7 +692,7 @@ impl Transaction {
     /// Return the transparent value balance,
     /// the change in the transaction value pool due to transparent inputs and outputs.
     #[allow(clippy::unwrap_in_result)]
-    pub fn transparent_value_balance_from_outputs(
+    fn transparent_value_balance_from_outputs(
         &self,
         outputs: &std::collections::HashMap<transparent::OutPoint, transparent::Output>,
     ) -> Result<ValueBalance<NegativeAllowed>, crate::value_balance::ValueBalanceError> {
@@ -697,7 +728,7 @@ impl Transaction {
     /// `zcash_primitives` collapses that case to `None`, conflating it with "no Sprout
     /// bundle". The net-sum bound matches zcashd from Canopy onward, where `vpub_old` is
     /// always zero; pre-Canopy heights are checkpointed.
-    pub fn sprout_value_balance(
+    fn sprout_value_balance(
         &self,
     ) -> Result<ValueBalance<NegativeAllowed>, crate::value_balance::ValueBalanceError> {
         let total = self
@@ -714,7 +745,7 @@ impl Transaction {
     }
 
     /// Get the overall value balance for this transaction.
-    pub fn value_balance(
+    fn value_balance(
         &self,
         utxos: &std::collections::HashMap<transparent::OutPoint, transparent::Utxo>,
     ) -> Result<ValueBalance<NegativeAllowed>, crate::value_balance::ValueBalanceError> {
@@ -741,7 +772,7 @@ impl Transaction {
 
     /// Returns the [`transparent::CoinbaseSpendRestriction`] for this transaction,
     /// assuming it is mined at `spend_height`.
-    pub fn coinbase_spend_restriction(
+    fn coinbase_spend_restriction(
         &self,
         network: &crate::parameters::Network,
         spend_height: block::Height,
@@ -751,6 +782,109 @@ impl Transaction {
         } else {
             transparent::CoinbaseSpendRestriction::DisallowCoinbaseSpend
         }
+    }
+}
+
+impl TransactionExt for Transaction {
+    type Sapling =
+        sapling_crypto::bundle::BundleBytes<sapling_crypto::bundle::Authorized, ZatBalance>;
+    type Orchard = ::orchard::BundleBytes<::orchard::bundle::Authorized, ZatBalance>;
+
+    fn tx_version(&self) -> TxVersion {
+        self.0.version()
+    }
+
+    fn consensus_branch_id(&self) -> zcash_protocol::consensus::BranchId {
+        self.0.consensus_branch_id()
+    }
+
+    fn raw_lock_time(&self) -> u32 {
+        self.0.lock_time()
+    }
+
+    fn raw_expiry_height(&self) -> u32 {
+        self.0.expiry_height().into()
+    }
+
+    fn transparent_bundle(
+        &self,
+    ) -> Option<&zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
+        self.0.transparent_bundle()
+    }
+
+    fn sprout_bundle(&self) -> Option<&zp_tx::components::sprout::Bundle> {
+        self.0.sprout_bundle()
+    }
+
+    fn sapling_bundle(&self) -> Option<&Self::Sapling> {
+        self.0.sapling_bundle()
+    }
+
+    fn orchard_bundle(&self) -> Option<&Self::Orchard> {
+        self.0.orchard_bundle()
+    }
+
+    fn ironwood_bundle(&self) -> Option<&Self::Orchard> {
+        self.0.ironwood_bundle()
+    }
+
+    fn txid(&self) -> zp_tx::TxId {
+        self.0.txid()
+    }
+
+    fn auth_commitment(&self) -> blake2b_simd::Hash {
+        self.0.auth_commitment()
+    }
+}
+
+impl TransactionExt for zp_tx::Transaction {
+    type Sapling = sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>;
+    type Orchard = ::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>;
+
+    fn tx_version(&self) -> TxVersion {
+        zp_tx::TransactionData::version(self)
+    }
+
+    fn consensus_branch_id(&self) -> zcash_protocol::consensus::BranchId {
+        zp_tx::TransactionData::consensus_branch_id(self)
+    }
+
+    fn raw_lock_time(&self) -> u32 {
+        zp_tx::TransactionData::lock_time(self)
+    }
+
+    fn raw_expiry_height(&self) -> u32 {
+        zp_tx::TransactionData::expiry_height(self).into()
+    }
+
+    fn transparent_bundle(
+        &self,
+    ) -> Option<&zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
+        zp_tx::TransactionData::transparent_bundle(self)
+    }
+
+    fn sprout_bundle(&self) -> Option<&zp_tx::components::sprout::Bundle> {
+        zp_tx::TransactionData::sprout_bundle(self)
+    }
+
+    fn sapling_bundle(&self) -> Option<&Self::Sapling> {
+        zp_tx::TransactionData::sapling_bundle(self)
+    }
+
+    fn orchard_bundle(&self) -> Option<&Self::Orchard> {
+        zp_tx::TransactionData::orchard_bundle(self)
+    }
+
+    fn ironwood_bundle(&self) -> Option<&Self::Orchard> {
+        zp_tx::TransactionData::ironwood_bundle(self)
+    }
+
+    fn txid(&self) -> zp_tx::TxId {
+        zp_tx::Transaction::txid(self)
+    }
+
+    fn auth_commitment(&self) -> blake2b_simd::Hash {
+        zp_tx::Transaction::auth_commitment(self)
     }
 }
 

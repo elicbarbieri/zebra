@@ -21,7 +21,7 @@ use zebra_chain::{
         Network, NetworkKind, NetworkUpgrade,
     },
     serialization::ZcashSerialize as _,
-    transaction::{self, LockTime, Transaction},
+    transaction::{self, LockTime, Transaction, TransactionExt},
     transparent,
 };
 use zebra_node_services::rpc_client::RpcRequestClient;

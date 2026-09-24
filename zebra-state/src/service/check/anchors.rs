@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use zebra_chain::{
     block::{Block, Height},
     sprout,
-    transaction::{Hash as TransactionHash, Transaction, UnminedTx},
+    transaction::{Hash as TransactionHash, Transaction, TransactionExt, UnminedTx},
 };
 
 use crate::{

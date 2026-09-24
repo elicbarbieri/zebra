@@ -16,7 +16,8 @@ use zebra_chain::{
     fmt::SummaryDebug,
     parameters::{Network, NetworkUpgrade},
     serialization::{ZcashDeserialize, ZcashDeserializeInto},
-    transaction, transparent,
+    transaction::{self, TransactionExt},
+    transparent,
     value_balance::ValueBalance,
 };
 

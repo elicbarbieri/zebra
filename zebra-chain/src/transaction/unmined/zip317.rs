@@ -11,7 +11,7 @@ use crate::{
     amount::{Amount, NonNegative},
     block::MAX_BLOCK_BYTES,
     serialization::ZcashSerialize,
-    transaction::{Transaction, UnminedTx},
+    transaction::{Transaction, TransactionExt, UnminedTx},
 };
 
 #[cfg(test)]

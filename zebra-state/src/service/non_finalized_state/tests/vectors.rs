@@ -11,6 +11,7 @@ use zebra_chain::{
     primitives::zcash_history::BlockCommitmentTreeRoots,
     serialization::ZcashDeserializeInto,
     subtree::NoteCommitmentSubtree,
+    transaction::TransactionExt,
     transparent,
     value_balance::ValueBalance,
 };
