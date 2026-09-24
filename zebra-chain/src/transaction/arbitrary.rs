@@ -27,7 +27,7 @@ use crate::{
 use zcash_primitives::transaction::TxVersion;
 use zcash_transparent;
 
-use super::{LockTime, Memo, Transaction, UnminedTx, VerifiedUnminedTx};
+use super::{LockTime, Transaction, UnminedTx, VerifiedUnminedTx};
 
 /// Returns the librustzcash consensus branch ID for `network_upgrade`, falling back to
 /// `fallback` when the upgrade has no branch ID that librustzcash recognises.
@@ -550,23 +550,6 @@ impl Transaction {
     }
 }
 
-impl Arbitrary for Memo {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (vec(any::<u8>(), 512))
-            .prop_map(|v| {
-                let mut bytes = [0; 512];
-                bytes.copy_from_slice(v.as_slice());
-                Memo(Box::new(bytes))
-            })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-/// Generates arbitrary [`LockTime`]s.
 impl Arbitrary for LockTime {
     type Parameters = ();
 

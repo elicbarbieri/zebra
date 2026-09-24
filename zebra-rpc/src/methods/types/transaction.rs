@@ -995,9 +995,6 @@ impl TransactionObject {
                         bytes
                     };
 
-                    let (ephemeral_key, proof, ciphertexts) =
-                        transaction::sprout_joinsplit_key_proof_and_ciphertexts(joinsplit);
-
                     let vpub_old = i64::from(joinsplit.vpub_old());
                     let vpub_new = i64::from(joinsplit.vpub_new());
                     let vpub_old_amount = Amount::<NonNegative>::try_from(vpub_old)
@@ -1013,11 +1010,19 @@ impl TransactionObject {
                         anchor: display_order(joinsplit.anchor()),
                         nullifiers: joinsplit.nullifiers().iter().map(display_order).collect(),
                         commitments: joinsplit.commitments().iter().map(display_order).collect(),
-                        one_time_pubkey: display_order(&ephemeral_key),
+                        one_time_pubkey: display_order(joinsplit.ephemeral_key()),
                         random_seed: display_order(joinsplit.random_seed()),
                         macs: joinsplit.macs().iter().map(display_order).collect(),
-                        proof,
-                        ciphertexts: ciphertexts.iter().map(|c| c.to_vec()).collect(),
+                        // Proof & ciphertexts in wire order (= zcashd)
+                        proof: match joinsplit.proof() {
+                            zebra_chain::sprout::SproutProof::Groth(proof) => proof.to_vec(),
+                            zebra_chain::sprout::SproutProof::PHGR(proof) => proof.to_vec(),
+                        },
+                        ciphertexts: joinsplit
+                            .ciphertexts()
+                            .iter()
+                            .map(|ciphertext| ciphertext.to_vec())
+                            .collect(),
                     }
                 })
                 .collect(),
