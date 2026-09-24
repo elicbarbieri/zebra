@@ -1,0 +1,4 @@
+project: zebra-rpc
+kind: Fixed
+body: 'The build script compiles `proto/indexer.proto` with protoc 34, which rejects the empty `--proto_path` it used to pass.'
+time: 2026-09-24T17:09:11.189053928Z

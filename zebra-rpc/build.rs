@@ -23,9 +23,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn build_or_copy_proto() -> Result<(), Box<dyn std::error::Error>> {
     // Zebra's indexer API.
+    // - Include path `.` = crate root (descriptor keeps `proto/indexer.proto`, protoc 34 rejects `""`)
     build_or_copy_proto_set(
         &["proto/indexer.proto"],
-        &[""],
+        &["."],
         "indexer_descriptor.bin",
         &["indexer_descriptor.bin", "zebra.indexer.rpc.rs"],
         true,
