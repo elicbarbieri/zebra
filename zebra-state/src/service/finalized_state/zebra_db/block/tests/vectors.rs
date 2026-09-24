@@ -176,5 +176,16 @@ fn test_block_db_round_trip_with(
         }
 
         assert_eq!(stored_block, original_block);
+
+        // `getblock` verbosity 0 serves these bytes as-is (exact encoding, incl. transaction order)
+        let raw_block_bytes = state
+            .raw_block_bytes(finalized.height.into())
+            .expect("block was stored at height");
+
+        assert_eq!(
+            hex::encode(&raw_block_bytes),
+            hex::encode(&block_data),
+            "raw block bytes must match the serialized block",
+        );
     }
 }

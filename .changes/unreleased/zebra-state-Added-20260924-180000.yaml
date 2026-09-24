@@ -1,0 +1,4 @@
+project: zebra-state
+kind: Added
+body: '`ReadRequest::RawBlock` / `ReadResponse::RawBlock`: a best-chain block, serialized. Finalized blocks are reassembled from their stored bytes without parsing a transaction.'
+time: 2026-09-24T18:00:00.000000000Z

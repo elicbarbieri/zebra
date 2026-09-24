@@ -1548,7 +1548,7 @@ where
                 .map_error(server::error::LegacyCode::InvalidParameter)?;
 
         if verbosity == 0 {
-            let request = zebra_state::ReadRequest::Block(hash_or_height);
+            let request = zebra_state::ReadRequest::RawBlock(hash_or_height);
             let response = self
                 .read_state
                 .clone()
@@ -1557,10 +1557,10 @@ where
                 .map_misc_error()?;
 
             match response {
-                zebra_state::ReadResponse::Block(Some(block)) => {
-                    Ok(GetBlockResponse::Raw(block.into()))
+                zebra_state::ReadResponse::RawBlock(Some(block)) => {
+                    Ok(GetBlockResponse::Raw(block))
                 }
-                zebra_state::ReadResponse::Block(None) => {
+                zebra_state::ReadResponse::RawBlock(None) => {
                     Err("Block not found").map_error(server::error::LegacyCode::InvalidParameter)
                 }
                 _ => unreachable!("unmatched response to a block request"),

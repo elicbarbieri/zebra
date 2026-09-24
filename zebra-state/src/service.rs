@@ -1457,8 +1457,15 @@ impl Service<ReadRequest> for ReadStateService {
                 ))
             }
 
-            // Used by the get_block (raw) RPC and the StateService.
+            // Used by the StateService.
             ReadRequest::Block(hash_or_height) => Ok(ReadResponse::Block(read::block(
+                state.latest_best_chain(),
+                &state.db,
+                hash_or_height,
+            ))),
+
+            // Used by the get_block (raw) RPC.
+            ReadRequest::RawBlock(hash_or_height) => Ok(ReadResponse::RawBlock(read::raw_block(
                 state.latest_best_chain(),
                 &state.db,
                 hash_or_height,
