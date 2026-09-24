@@ -21,7 +21,9 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::{ZcashDeserialize, ZcashSerialize},
-    transaction::{Hash, HashType, LockTime, Transaction, TransactionExt},
+    transaction::{
+        CompressedTransaction, Hash, HashType, LockTime, TransactionExt, TransactionTestExt,
+    },
     transparent,
 };
 
@@ -77,11 +79,11 @@ fn input() -> transparent::Input {
     }
 }
 
-fn block_at(network: &Network, height: Height, transaction: Transaction) -> Arc<Block> {
+fn block_at(network: &Network, height: Height, transaction: CompressedTransaction) -> Arc<Block> {
     // Reuse a historical header; this configured network disables PoW, not semantic checks.
     let mut block =
         Block::zcash_deserialize(&zebra_test::vectors::BLOCK_MAINNET_1_BYTES[..]).unwrap();
-    let coinbase = Transaction::test_v5(
+    let coinbase = CompressedTransaction::test_v5(
         NetworkUpgrade::current(network, height),
         vec![transparent::Input::Coinbase {
             height,
@@ -139,7 +141,7 @@ async fn nu7_semantic_block_transaction_versions() {
     let _init_guard = zebra_test::init();
     let network = network();
     let before = (ACTIVATION - 1).unwrap();
-    let v4 = Transaction::test_v4(
+    let v4 = CompressedTransaction::test_v4(
         vec![input()],
         vec![output(10_000)],
         LockTime::unlocked(),
@@ -169,7 +171,7 @@ async fn nu7_semantic_block_transaction_versions() {
             );
         }
 
-        let v5 = Transaction::test_v5(
+        let v5 = CompressedTransaction::test_v5(
             NetworkUpgrade::current(&network, height),
             vec![input()],
             vec![output(10_000)],
@@ -194,8 +196,11 @@ async fn nu7_semantic_block_transaction_versions() {
     }
 }
 
-fn ironwood_transaction(nu: NetworkUpgrade, bundle: Bundle<Authorized, ZatBalance>) -> Transaction {
-    Transaction::test_v6_with_bundles(
+fn ironwood_transaction(
+    nu: NetworkUpgrade,
+    bundle: Bundle<Authorized, ZatBalance>,
+) -> CompressedTransaction {
+    CompressedTransaction::test_v6_with_bundles(
         nu,
         vec![input()],
         vec![output(9_000)],
@@ -281,7 +286,7 @@ fn nu7_semantic_block_ironwood_proof_and_signatures() {
         ] {
             // Exercise the received-wire representation too, not just the builder's in-memory data.
             let bytes = tx.zcash_serialize_to_vec().unwrap();
-            let tx = Transaction::zcash_deserialize(bytes.as_slice()).unwrap();
+            let tx = CompressedTransaction::zcash_deserialize(bytes.as_slice()).unwrap();
             let block = block_at(&network, height, tx);
             assert_eq!(verify(&network, block.clone()).await.unwrap(), block.hash());
         }

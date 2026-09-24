@@ -130,7 +130,7 @@ mod nsm {
             testnet::{ConfiguredActivationHeights, RegtestParameters},
         },
         serialization::ZcashDeserializeInto,
-        transaction::{self, LockTime, Transaction},
+        transaction::{self, CompressedTransaction, LockTime, TransactionTestExt},
         transparent,
         value_balance::ValueBalance,
     };
@@ -187,7 +187,7 @@ mod nsm {
             .zcash_deserialize_into::<Block>()
             .unwrap();
 
-        let coinbase = Transaction::test_v4(
+        let coinbase = CompressedTransaction::test_v4(
             vec![transparent::Input::Coinbase {
                 height,
                 data: vec![0],
@@ -209,7 +209,7 @@ mod nsm {
             value: amount(1_000),
             lock_script: transparent::Script::new(&[]),
         };
-        let spend = Transaction::test_v4(
+        let spend = CompressedTransaction::test_v4(
             vec![transparent::Input::PrevOut {
                 outpoint,
                 unlock_script: transparent::Script::new(&[]),
@@ -428,8 +428,9 @@ mod nsm {
 fn ironwood_block_auth_commitment_accepts_honest_body_and_detects_a_forgery() {
     use zebra_chain::{
         primitives::zcash_history::BlockCommitmentTreeRoots,
-        serialization::BytesInDisplayOrder as _, transaction::Transaction, transparent,
-        LedgerState,
+        serialization::BytesInDisplayOrder as _,
+        transaction::{CompressedTransaction, TransactionExt as _, TransactionTestExt as _},
+        transparent, LedgerState,
     };
     use zebra_test::prelude::{
         prop::{strategy::ValueTree as _, test_runner::TestRunner},
@@ -500,7 +501,7 @@ fn ironwood_block_auth_commitment_accepts_honest_body_and_detects_a_forgery() {
     // the txid, so this leaves the block hash unchanged: exactly the body an unauthenticated
     // peer can serve under a canonical header.
     let mut forged = block.clone();
-    let coinbase: &mut Transaction = Arc::make_mut(
+    let coinbase: &mut CompressedTransaction = Arc::make_mut(
         forged
             .transactions
             .first_mut()
@@ -553,7 +554,9 @@ fn reserve_funded_payouts_follow_reissuance_and_parent() -> Result<(), BoxError>
                 ConfiguredFundingStreams, Parameters,
             },
         },
-        transaction::{Hash as TransactionHash, LockTime, Transaction},
+        transaction::{
+            CompressedTransaction, Hash as TransactionHash, LockTime, TransactionTestExt,
+        },
         transparent,
         value_balance::ValueBalance,
     };
@@ -604,7 +607,7 @@ fn reserve_funded_payouts_follow_reissuance_and_parent() -> Result<(), BoxError>
             0,
         ),
     )]);
-    let spend = Arc::new(Transaction::test_v1(
+    let spend = Arc::new(CompressedTransaction::test_v1(
         vec![transparent::Input::PrevOut {
             outpoint,
             unlock_script: transparent::Script::new(&[]),
@@ -619,7 +622,7 @@ fn reserve_funded_payouts_follow_reissuance_and_parent() -> Result<(), BoxError>
     let make_block = |height, miner, grant| Block {
         header: Arc::new(header),
         transactions: vec![
-            Arc::new(Transaction::test_v1(
+            Arc::new(CompressedTransaction::test_v1(
                 vec![transparent::Input::Coinbase {
                     height,
                     data: vec![0],

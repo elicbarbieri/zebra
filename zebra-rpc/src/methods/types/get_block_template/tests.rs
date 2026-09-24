@@ -17,7 +17,7 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
 };
 
 use crate::client::TransactionTemplate;
@@ -79,7 +79,7 @@ fn template_reports_selected_transaction_dependencies() {
     use zebra_chain::{
         block,
         serialization::DateTime32,
-        transaction::{self, LockTime, VerifiedUnminedTx},
+        transaction::{self, LockTime, TransactionTestExt, VerifiedUnminedTx},
         transparent::{Input, OutPoint, Output, Script},
         work::difficulty::{CompactDifficulty, ExpandedDifficulty, U256},
     };
@@ -97,7 +97,7 @@ fn template_reports_selected_transaction_dependencies() {
         ..Default::default()
     });
     let transaction = |outpoints: Vec<OutPoint>, output_value: u64| {
-        let tx = Transaction::test_v5(
+        let tx = CompressedTransaction::test_v5(
             NetworkUpgrade::Nu7,
             outpoints
                 .into_iter()
@@ -268,7 +268,7 @@ fn coinbase() -> anyhow::Result<()> {
                     .as_ref()
                     // Deserialization contains checks for elementary consensus rules, which must
                     // pass.
-                    .zcash_deserialize_into::<Transaction>()?;
+                    .zcash_deserialize_into::<CompressedTransaction>()?;
                 }
             }
         }
@@ -620,7 +620,7 @@ fn coinbase_at_nu6_3_routes_shielded_output_to_ironwood() {
 
     let template = TransactionTemplate::new_coinbase(&net, height, &miner_params, Amount::zero())
         .expect("valid coinbase tx");
-    let coinbase: Transaction = template.data.as_ref().zcash_deserialize_into().unwrap();
+    let coinbase: CompressedTransaction = template.data.as_ref().zcash_deserialize_into().unwrap();
 
     // The coinbase is a v6 transaction with Ironwood shielded data and no Orchard shielded data.
     // ZIP-229: from NU6.3, coinbase MUST have an empty Orchard component.
@@ -666,7 +666,8 @@ fn coinbase_fee_metadata_matches_collected_fees() {
             let template =
                 TransactionTemplate::new_coinbase(&net, height, &miner, gross.try_into().unwrap())
                     .unwrap();
-            let coinbase: Transaction = template.data.as_ref().zcash_deserialize_into().unwrap();
+            let coinbase: CompressedTransaction =
+                template.data.as_ref().zcash_deserialize_into().unwrap();
             let paid = coinbase
                 .outputs()
                 .iter()
@@ -722,7 +723,8 @@ fn coinbase_pays_nsm_subsidy() {
             parent_nsm_value_balance,
         )
         .expect("valid coinbase tx");
-        let coinbase: Transaction = template.data.as_ref().zcash_deserialize_into().unwrap();
+        let coinbase: CompressedTransaction =
+            template.data.as_ref().zcash_deserialize_into().unwrap();
         assert_eq!(coinbase.outputs().len(), 1);
         coinbase.outputs()[0].value()
     };

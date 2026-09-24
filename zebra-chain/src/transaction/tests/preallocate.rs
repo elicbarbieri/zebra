@@ -3,15 +3,15 @@
 use proptest::prelude::*;
 
 use crate::{
-    block::MAX_BLOCK_BYTES,
+    block::{LedgerState, MAX_BLOCK_BYTES},
     serialization::{arbitrary::max_allocation_is_big_enough, TrustedPreallocate, ZcashSerialize},
     transaction::{
+        arbitrary::TransactionArbitrary,
         serialize::{
             MIN_TRANSPARENT_INPUT_SIZE, MIN_TRANSPARENT_OUTPUT_SIZE, MIN_TRANSPARENT_TX_SIZE,
         },
-        transparent::Input,
-        transparent::Output,
-        Transaction,
+        transparent::{Input, Output},
+        CompressedTransaction,
     },
 };
 
@@ -19,7 +19,7 @@ proptest! {
     /// Confirm that each spend takes at least MIN_TRANSPARENT_TX_SIZE bytes when serialized.
     /// This verifies that our calculated [`TrustedPreallocate::max_allocation`] is indeed an upper bound.
     #[test]
-    fn tx_size_is_small_enough(tx in Transaction::arbitrary()) {
+    fn tx_size_is_small_enough(tx in CompressedTransaction::strategy(LedgerState::default())) {
         let serialized = tx.zcash_serialize_to_vec().expect("Serialization to vec must succeed");
         prop_assert!(serialized.len() as u64 >= MIN_TRANSPARENT_TX_SIZE)
     }
@@ -48,7 +48,7 @@ proptest! {
 
     /// Verify the smallest disallowed vector of `Transaction`s is too large to fit in a Zcash block
     #[test]
-    fn tx_max_allocation_is_big_enough(tx in Transaction::arbitrary()) {
+    fn tx_max_allocation_is_big_enough(tx in CompressedTransaction::strategy(LedgerState::default())) {
         let (
             smallest_disallowed_vec_len,
             smallest_disallowed_serialized_len,
@@ -57,12 +57,12 @@ proptest! {
         ) = max_allocation_is_big_enough(tx);
 
         // Check that our smallest_disallowed_vec is only one item larger than the limit
-        prop_assert!(((smallest_disallowed_vec_len - 1) as u64) == Transaction::max_allocation());
+        prop_assert!(((smallest_disallowed_vec_len - 1) as u64) == CompressedTransaction::max_allocation());
         // Check that our smallest_disallowed_vec is too big to send in a valid Zcash Block
         prop_assert!(smallest_disallowed_serialized_len as u64 > MAX_BLOCK_BYTES);
 
         // Check that our largest_allowed_vec contains the maximum number of Transactions
-        prop_assert!((largest_allowed_vec_len as u64) == Transaction::max_allocation());
+        prop_assert!((largest_allowed_vec_len as u64) == CompressedTransaction::max_allocation());
         // This is a variable-sized type, so largest_allowed_serialized_len can exceed the length limit
     }
 

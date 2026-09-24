@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: '`transaction::Transaction` is replaced by the upstream `zcash_primitives::transaction::CompressedTransaction`, re-exported as `transaction::CompressedTransaction`. Equality is structural (authorizing data included) instead of by txid. `Display` is removed; `Serialize` (test, `proptest-impl`, `elasticsearch`) moves to the `SerdeTransaction` view with unchanged output; `Arbitrary` and the test builders move to `TransactionArbitrary::strategy` and `TransactionTestExt`.'
+time: 2026-09-24T21:00:00.000000000Z

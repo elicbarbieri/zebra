@@ -14,7 +14,7 @@ use zebra_chain::{
     block::{Block, Height},
     parameters::Network::Mainnet,
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt, TransactionTestExt},
     transparent::{Input, OutPoint, Output, Script},
 };
 
@@ -111,16 +111,17 @@ fn measure<T>(f: impl FnOnce() -> T) -> (T, HeapUse) {
 /// Returns `block` with its coinbase outputs replaced by `outputs`.
 fn with_coinbase_outputs(block: Arc<Block>, outputs: Vec<Output>) -> Arc<Block> {
     let mut block = Block::clone(&block);
-    let coinbase = Transaction::clone(&block.transactions[0]).with_transparent_outputs(outputs);
+    let coinbase =
+        CompressedTransaction::clone(&block.transactions[0]).with_transparent_outputs(outputs);
     block.transactions[0] = Arc::new(coinbase);
     Arc::new(block)
 }
 
 /// A transaction spending `outpoints`, with no outputs.
 fn spending_tx(
-    template: &Transaction,
+    template: &CompressedTransaction,
     outpoints: impl IntoIterator<Item = OutPoint>,
-) -> Transaction {
+) -> CompressedTransaction {
     let inputs = outpoints
         .into_iter()
         .map(|outpoint| Input::PrevOut {

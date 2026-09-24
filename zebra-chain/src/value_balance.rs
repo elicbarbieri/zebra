@@ -10,7 +10,7 @@ use std::{borrow::Borrow, collections::HashMap};
 #[cfg(any(test, feature = "proptest-impl"))]
 use crate::{
     amount::MAX_MONEY,
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
     transparent,
 };
 
@@ -276,7 +276,7 @@ impl ValueBalance<NonNegative> {
     #[cfg(any(test, feature = "proptest-impl"))]
     pub fn add_transaction(
         self,
-        transaction: impl Borrow<Transaction>,
+        transaction: impl Borrow<CompressedTransaction>,
         utxos: &HashMap<transparent::OutPoint, transparent::Output>,
     ) -> Result<ValueBalance<NonNegative>, ValueBalanceError> {
         use std::ops::Neg;

@@ -8,7 +8,7 @@ use zebra_chain::{
     sapling,
     serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
     sprout,
-    transaction::{Transaction, TransactionExt, UnminedTx},
+    transaction::{CompressedTransaction, TransactionExt, TransactionTestExt, UnminedTx},
 };
 
 use crate::{
@@ -155,7 +155,7 @@ fn prepare_sprout_block(
             });
 
             // Build a V4 transaction with the adjusted joinsplit data.
-            let new_tx = Transaction::test_v4_with_sprout(joinsplit_data);
+            let new_tx = CompressedTransaction::test_v4_with_sprout(joinsplit_data);
 
             // Add the new adjusted transaction to [`block_to_prepare`].
             block_to_prepare.transactions.push(Arc::new(new_tx));
@@ -168,7 +168,7 @@ fn prepare_sprout_block(
 /// but with `valueBalanceSapling` set to zero (to pass chain value pool checks).
 ///
 /// Serializes `tx`, patches the valueBalanceSapling field to 0, then deserializes.
-fn build_v4_tx_with_sapling_data_zero_balance(tx: &Transaction) -> Transaction {
+fn build_v4_tx_with_sapling_data_zero_balance(tx: &CompressedTransaction) -> CompressedTransaction {
     // Serialize the transaction to bytes.
     let mut tx_bytes = tx
         .zcash_serialize_to_vec()
@@ -205,7 +205,7 @@ fn build_v4_tx_with_sapling_data_zero_balance(tx: &Transaction) -> Transaction {
     );
     tx_bytes[pos..pos + 8].copy_from_slice(&0i64.to_le_bytes());
 
-    let tx = Transaction::zcash_deserialize(tx_bytes.as_slice())
+    let tx = CompressedTransaction::zcash_deserialize(tx_bytes.as_slice())
         .expect("patched V4 transaction should deserialize");
 
     // Remove transparent inputs/outputs that reference UTXOs not in the test state.

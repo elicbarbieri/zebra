@@ -76,7 +76,7 @@ use zebra_chain::{
         ZcashSerialize,
     },
     subtree::NoteCommitmentSubtreeIndex,
-    transaction::{self, SerializedTransaction, Transaction, TransactionExt, UnminedTx},
+    transaction::{self, CompressedTransaction, SerializedTransaction, TransactionExt, UnminedTx},
     transparent::{self, Address, OutputIndex},
     value_balance::ValueBalance,
     work::{
@@ -1518,12 +1518,13 @@ where
         // <https://github.com/zcash/zcash/blob/99ad6fdc3a549ab510422820eea5e5ce9f60a5fd/src/rpc/rawtransaction.cpp#L1259-L1260>
         let raw_transaction_bytes = Vec::from_hex(raw_transaction_hex)
             .map_error(server::error::LegacyCode::Deserialization)?;
-        let raw_transaction = Transaction::zcash_deserialize(&*raw_transaction_bytes)
+        let raw_transaction = CompressedTransaction::zcash_deserialize(&*raw_transaction_bytes)
             .map_error(server::error::LegacyCode::Deserialization)?;
 
         // Point rules (deferred from parse), checked before the retry queue
         // - Bad point stays a decode error, never queued for re-verification each block
         raw_transaction
+            .clone()
             .decompress()
             .map_error(server::error::LegacyCode::Deserialization)?;
 
@@ -2206,7 +2207,7 @@ where
                             Some(mined.block_time),
                         ),
                         _ => {
-                            let raw_tx: Arc<Transaction> = tx.into();
+                            let raw_tx: Arc<CompressedTransaction> = tx.into();
                             (raw_tx, None, None, None)
                         }
                     };
@@ -2271,7 +2272,7 @@ where
                     }
                 }
             } else {
-                let tx: Arc<Transaction> = tx.into();
+                let tx: Arc<CompressedTransaction> = tx.into();
                 let hex = tx.into();
                 GetRawTransactionResponse::Raw(hex)
             }),

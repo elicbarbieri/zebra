@@ -33,7 +33,7 @@ fn funding_stream_p2pkh_recipient_is_matched_exactly() -> Result<(), Report> {
             NetworkKind,
         },
         serialization::ZcashDeserializeInto,
-        transaction::{LockTime, Transaction},
+        transaction::{CompressedTransaction, LockTime, TransactionTestExt},
         transparent::{Address, Output},
     };
     use std::sync::Arc;
@@ -72,7 +72,7 @@ fn funding_stream_p2pkh_recipient_is_matched_exactly() -> Result<(), Report> {
         ),
     ] {
         let address: Address = address.parse()?;
-        block.transactions[0] = Arc::new(Transaction::test_v4(
+        block.transactions[0] = Arc::new(CompressedTransaction::test_v4(
             inputs.clone(),
             vec![Output::new(payment, address.script())],
             LockTime::unlocked(),

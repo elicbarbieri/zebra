@@ -294,7 +294,7 @@ fn max_msg_size_round_trip() {
     let _init_guard = zebra_test::init();
 
     // make tests with a Tx message
-    let tx: Transaction = zebra_test::vectors::DUMMY_TX1
+    let tx: CompressedTransaction = zebra_test::vectors::DUMMY_TX1
         .zcash_deserialize_into()
         .unwrap();
     let msg = Message::Tx(std::sync::Arc::new(tx).into());

@@ -9,9 +9,11 @@ use tokio::{sync::oneshot, time};
 use tower::ServiceExt;
 
 use zebra_chain::{
-    block::{Block, Height},
+    block::{Block, Height, LedgerState},
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, TransactionExt, UnminedTx},
+    transaction::{
+        arbitrary::TransactionArbitrary, CompressedTransaction, TransactionExt, UnminedTx,
+    },
 };
 use zebra_node_services::mempool::{Gossip, Request, Response};
 use zebra_state::{BoxError, ReadRequest, ReadResponse};
@@ -158,7 +160,7 @@ proptest! {
 
     /// Test transactions are removed from queue after they get in the mempool
     #[test]
-    fn queue_runner_mempool(transaction in any::<Transaction>()) {
+    fn queue_runner_mempool(transaction in CompressedTransaction::strategy(LedgerState::default())) {
         let (runtime, _init_guard) = zebra_test::init_async();
 
         runtime.block_on(async move {
@@ -240,7 +242,7 @@ proptest! {
 
     /// Test transactions are removed from queue after they get in the state
     #[test]
-    fn queue_runner_state(transaction in any::<Transaction>()) {
+    fn queue_runner_state(transaction in CompressedTransaction::strategy(LedgerState::default())) {
         let (runtime, _init_guard) = zebra_test::init_async();
 
         runtime.block_on(async move {
@@ -315,7 +317,7 @@ proptest! {
 
     // Test any given transaction can be mempool retried.
     #[test]
-    fn queue_mempool_retry(transaction in any::<Transaction>()) {
+    fn queue_mempool_retry(transaction in CompressedTransaction::strategy(LedgerState::default())) {
         let (runtime, _init_guard) = zebra_test::init_async();
 
         runtime.block_on(async move {

@@ -4,11 +4,11 @@ use proptest::prelude::*;
 
 use zebra_chain::{
     amount::{Amount, NonNegative},
-    block::{self, Height},
+    block::{self, Height, LedgerState},
     block_info::BlockInfo,
     orchard, sapling, sprout,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, arbitrary::TransactionArbitrary, CompressedTransaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
 };
@@ -95,7 +95,7 @@ fn roundtrip_transaction_hash() {
 fn roundtrip_transaction() {
     let _init_guard = zebra_test::init();
 
-    proptest!(|(val in any::<Transaction>())| {
+    proptest!(|(val in CompressedTransaction::strategy(LedgerState::default()))| {
         // Coinbase transactions with Sapling spends are rejected during deserialization
         // (GHSA-rgwx-8r98-p34c), so they cannot round-trip through `IntoDisk`/`FromDisk`.
         // The arbitrary `Transaction` strategy still produces them so the

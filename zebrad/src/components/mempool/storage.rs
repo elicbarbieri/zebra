@@ -20,7 +20,8 @@ use zcash_script::solver;
 use zebra_chain::{
     block::Height,
     transaction::{
-        self, Hash, Transaction, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx,
+        self, CompressedTransaction, Hash, TransactionExt, UnminedTx, UnminedTxId,
+        VerifiedUnminedTx,
     },
     transparent,
 };
@@ -545,7 +546,7 @@ impl Storage {
     pub fn reject_and_remove_same_effects(
         &mut self,
         mined_ids: &HashSet<transaction::Hash>,
-        transactions: Vec<Arc<Transaction>>,
+        transactions: Vec<Arc<CompressedTransaction>>,
     ) -> RemovedTransactionIds {
         let removed_mined = self
             .verified

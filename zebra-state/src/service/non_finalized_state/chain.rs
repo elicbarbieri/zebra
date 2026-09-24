@@ -25,7 +25,7 @@ use zebra_chain::{
     serialization::ZcashSerialize as _,
     sprout,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
     work::difficulty::PartialCumulativeWork,
@@ -476,11 +476,11 @@ impl Chain {
         self.blocks.get(&height)
     }
 
-    /// Returns the [`Transaction`] with [`transaction::Hash`], if it exists in this chain.
+    /// Returns the [`CompressedTransaction`] with [`transaction::Hash`], if it exists in this chain.
     pub fn transaction(
         &self,
         hash: transaction::Hash,
-    ) -> Option<(&Arc<Transaction>, block::Height, DateTime<Utc>)> {
+    ) -> Option<(&Arc<CompressedTransaction>, block::Height, DateTime<Utc>)> {
         self.tx_loc_by_hash.get(&hash).map(|tx_loc| {
             (
                 &self.blocks[&tx_loc.height].block.transactions[tx_loc.index.as_usize()],
@@ -490,9 +490,12 @@ impl Chain {
         })
     }
 
-    /// Returns the [`Transaction`] at [`TransactionLocation`], if it exists in this chain.
+    /// Returns the [`CompressedTransaction`] at [`TransactionLocation`], if it exists in this chain.
     #[allow(dead_code)]
-    pub fn transaction_by_loc(&self, tx_loc: TransactionLocation) -> Option<&Arc<Transaction>> {
+    pub fn transaction_by_loc(
+        &self,
+        tx_loc: TransactionLocation,
+    ) -> Option<&Arc<CompressedTransaction>> {
         self.blocks
             .get(&tx_loc.height)?
             .block

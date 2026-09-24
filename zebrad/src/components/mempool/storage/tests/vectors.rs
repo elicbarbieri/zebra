@@ -11,7 +11,7 @@ use zebra_chain::{
     amount::{Amount, NonNegative},
     block::Block,
     parameters::Network,
-    transaction::TransactionExt,
+    transaction::{TransactionExt, TransactionTestExt},
 };
 
 use zebra_chain::transparent;

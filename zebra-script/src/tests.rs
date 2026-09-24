@@ -6,7 +6,7 @@ use zebra_chain::{
     block::{self, Height},
     parameters::{Network, NetworkUpgrade},
     serialization::{ZcashDeserialize, ZcashDeserializeInto},
-    transaction::{self, HashType, LockTime, SigHasher, Transaction},
+    transaction::{self, CompressedTransaction, HashType, LockTime, SigHasher, TransactionTestExt},
     transparent::{self, Output},
 };
 use zebra_test::prelude::*;
@@ -21,7 +21,8 @@ lazy_static::lazy_static! {
 }
 
 fn verify_valid_script(nu: NetworkUpgrade, tx: &[u8], amount: u64, pubkey: &[u8]) -> Result<()> {
-    let transaction = tx.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let transaction =
+        tx.zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
     let output = transparent::Output {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(pubkey),
@@ -52,7 +53,8 @@ fn verify_valid_script_v4() -> Result<()> {
 fn count_legacy_sigops() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let tx = SCRIPT_TX.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let tx = SCRIPT_TX
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
 
     assert_eq!(tx.sigops()?, 1);
 
@@ -63,8 +65,8 @@ fn count_legacy_sigops() -> Result<()> {
 fn fail_invalid_script() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction =
-        SCRIPT_TX.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let transaction = SCRIPT_TX
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
     let coin = u64::pow(10, 8);
     let amount = 211 * coin;
     let output = transparent::Output {
@@ -90,8 +92,8 @@ fn reuse_script_verifier_pass_pass() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     let coin = u64::pow(10, 8);
-    let transaction =
-        SCRIPT_TX.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let transaction = SCRIPT_TX
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
     let amount = 212 * coin;
     let output = transparent::Output {
         value: amount.try_into()?,
@@ -123,8 +125,8 @@ fn reuse_script_verifier_pass_fail() -> Result<()> {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(&SCRIPT_PUBKEY.clone()),
     };
-    let transaction =
-        SCRIPT_TX.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let transaction = SCRIPT_TX
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
 
     let verifier = super::CachedFfiTransaction::new(
         transaction,
@@ -153,8 +155,8 @@ fn reuse_script_verifier_fail_pass() -> Result<()> {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(&SCRIPT_PUBKEY.clone()),
     };
-    let transaction =
-        SCRIPT_TX.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let transaction = SCRIPT_TX
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
 
     let verifier = super::CachedFfiTransaction::new(
         transaction,
@@ -183,8 +185,8 @@ fn reuse_script_verifier_fail_fail() -> Result<()> {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(&SCRIPT_PUBKEY.clone()),
     };
-    let transaction =
-        SCRIPT_TX.zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()?;
+    let transaction = SCRIPT_TX
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
 
     let verifier = super::CachedFfiTransaction::new(
         transaction,
@@ -214,7 +216,8 @@ fn p2sh() -> Result<()> {
     let serialized_tx = "0400008085202f8901c21354bf2305e474ad695382e68efc06e2f8b83c512496f615d153c2e00e688b00000000fdfd0000483045022100d2ab3e6258fe244fa442cfb38f6cef9ac9a18c54e70b2f508e83fa87e20d040502200eead947521de943831d07a350e45af8e36c2166984a8636f0a8811ff03ed09401473044022013e15d865010c257eef133064ef69a780b4bc7ebe6eda367504e806614f940c3022062fdbc8c2d049f91db2042d6c9771de6f1ef0b3b1fea76c1ab5542e44ed29ed8014c69522103b2cc71d23eb30020a4893982a1e2d352da0d20ee657fa02901c432758909ed8f21029d1e9a9354c0d2aee9ffd0f0cea6c39bbf98c4066cf143115ba2279d0ba7dabe2103e32096b63fd57f3308149d238dcbb24d8d28aad95c0e4e74e3e5e6a11b61bcc453aeffffffff0250954903000000001976a914a5a4e1797dac40e8ce66045d1a44c4a63d12142988acccf41c590000000017a9141c973c68b2acc6d6688eff9c7a9dd122ac1346ab8786c72400000000000000000000000000000000";
     let serialized_output = "4065675c0000000017a914c117756dcbe144a12a7c33a77cfa81aa5aeeb38187";
     let tx =
-        Transaction::zcash_deserialize(&hex::decode(serialized_tx).unwrap().to_vec()[..]).unwrap();
+        CompressedTransaction::zcash_deserialize(&hex::decode(serialized_tx).unwrap().to_vec()[..])
+            .unwrap();
 
     let previous_output =
         Output::zcash_deserialize(&hex::decode(serialized_output).unwrap().to_vec()[..]).unwrap();
@@ -275,7 +278,7 @@ fn build_and_verify_v5_p2pkh(
     // Build a V5 transaction with a placeholder unlock script.
     // For v5/ZIP-244, the sighash does NOT depend on the unlock script contents,
     // so we can compute the sighash with a placeholder, sign, then rebuild.
-    let placeholder_tx = Transaction::test_v5(
+    let placeholder_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
@@ -316,7 +319,7 @@ fn build_and_verify_v5_p2pkh(
     unlock_script_bytes.extend_from_slice(&pubkey_bytes);
 
     // Rebuild the V5 transaction with the real unlock script
-    let final_tx = Transaction::test_v5(
+    let final_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
@@ -472,7 +475,7 @@ fn build_and_verify_v5_p2pkh_single_with_missing_output(
     // Two inputs, one output: any input at index >= 1 has no corresponding
     // output for SIGHASH_SINGLE.
     let make_tx = |unlock_scripts: [Vec<u8>; 2]| {
-        Transaction::test_v5(
+        CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![
                 transparent::Input::PrevOut {
@@ -624,7 +627,7 @@ fn build_and_verify_v4_p2pkh(sig_hash_type_byte: u8) -> std::result::Result<(), 
         lock_script: lock_script.clone(),
     };
 
-    let placeholder_tx = Transaction::test_v4(
+    let placeholder_tx = CompressedTransaction::test_v4(
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
                 hash: transaction::Hash([0u8; 32]),
@@ -665,7 +668,7 @@ fn build_and_verify_v4_p2pkh(sig_hash_type_byte: u8) -> std::result::Result<(), 
     unlock_script_bytes.push(pubkey_bytes.len() as u8);
     unlock_script_bytes.extend_from_slice(&pubkey_bytes);
 
-    let final_tx = Transaction::test_v4(
+    let final_tx = CompressedTransaction::test_v4(
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
                 hash: transaction::Hash([0u8; 32]),
@@ -724,7 +727,7 @@ fn sighash_divergence_v4_raw_canonical_matches_typed() {
         lock_script: lock_script.clone(),
     };
 
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
                 hash: transaction::Hash([0u8; 32]),
@@ -870,7 +873,7 @@ fn count_coinbase_legacy_sigops_includes_coinbase_script() -> Result<()> {
         .activation_height(&network)
         .expect("NU5 has a Mainnet activation height");
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::Coinbase {
             height,
@@ -954,7 +957,7 @@ fn p2sh_sigop_count_counts_redeem_script() -> Result<()> {
         lock_script,
     };
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![spent_output.clone()],
@@ -1033,7 +1036,7 @@ fn p2sh_sigop_count_matches_zcashd_when_redeem_script_contains_disabled_opcode()
         lock_script,
     };
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![spent_output.clone()],
@@ -1087,7 +1090,7 @@ fn p2sh_sigop_count_is_zero_for_non_p2sh_and_coinbase() -> Result<()> {
         .expect("NU5 has a Mainnet activation height");
     let dummy_output_script = transparent::Script::new(&[0x51]);
     let output_amount = zebra_chain::amount::Amount::try_from(1_000_000)?;
-    let coinbase_tx = Transaction::test_v5(
+    let coinbase_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::Coinbase {
             height: nu5_height,
@@ -1125,7 +1128,7 @@ fn p2sh_sigop_count_is_zero_for_non_p2sh_and_coinbase() -> Result<()> {
         value: zebra_chain::amount::Amount::try_from(1_000_000)?,
         lock_script: p2pkh_lock,
     };
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![],
@@ -1173,7 +1176,7 @@ fn block_sigop_total_includes_coinbase_and_p2sh() -> Result<()> {
         .expect("NU5 has a Mainnet activation height");
     let dummy_output_script = transparent::Script::new(&[0x51]); // OP_TRUE
     let output_amount = zebra_chain::amount::Amount::try_from(1_000_000)?;
-    let coinbase_tx = Transaction::test_v5(
+    let coinbase_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::Coinbase {
             height: nu5_height,
@@ -1216,7 +1219,7 @@ fn block_sigop_total_includes_coinbase_and_p2sh() -> Result<()> {
         value: zebra_chain::amount::Amount::try_from(1_000_000)?,
         lock_script,
     };
-    let p2sh_tx_template = Transaction::test_v5(
+    let p2sh_tx_template = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![p2sh_input],
         vec![],
@@ -1266,7 +1269,7 @@ fn is_valid_rejects_mismatched_previous_outputs_length() {
     let _init_guard = zebra_test::init();
 
     let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()
         .expect("test fixture deserializes");
 
     // SCRIPT_TX has exactly one input. Pass two previous outputs so `.get(0)` succeeds
@@ -1294,7 +1297,7 @@ fn is_valid_rejects_out_of_range_input_index() {
     let _init_guard = zebra_test::init();
 
     let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::Transaction>>()
+        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()
         .expect("test fixture deserializes");
     let output = Output {
         value: (212 * u64::pow(10, 8)).try_into().expect("valid amount"),
@@ -1384,7 +1387,7 @@ fn stale_sighash_buffer_v5_two_checksig_rejected() {
     // Placeholder V5 tx used to compute the sighash; the V5 (ZIP 244) sighash
     // does not depend on the unlock script contents, so we can sign, then
     // rebuild the transaction with the real unlock script.
-    let placeholder_tx = Transaction::test_v5(
+    let placeholder_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
@@ -1427,7 +1430,7 @@ fn stale_sighash_buffer_v5_two_checksig_rejected() {
     unlock_script_bytes.extend_from_slice(&der_sig);
     unlock_script_bytes.push(0x01);
 
-    let final_tx = Transaction::test_v5(
+    let final_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
@@ -1480,7 +1483,7 @@ fn p2sh_sigop_count_uses_accurate_multisig_mode() -> Result<()> {
     lock.extend_from_slice(&[0u8; 20]);
     lock.push(0x87u8);
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![transparent::Input::PrevOut {
             outpoint: transparent::OutPoint {
@@ -1571,7 +1574,7 @@ fn poc_p2sh_accurate_multisig_should_count_one_not_twenty() -> Result<()> {
         lock_script,
     };
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![transparent::Output {
@@ -1623,7 +1626,7 @@ fn poc_p2sh_1001_accurate_multisigs_should_stay_below_block_sigop_limit() -> Res
 
     let spent_outputs = vec![spent_output; SPENDS];
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         inputs,
         vec![transparent::Output {

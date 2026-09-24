@@ -37,7 +37,7 @@ fn custom_genesis_unspendable_outputs_survive_reopen() {
         block::Block,
         parameters::testnet::{ConfiguredActivationHeights, ParametersBuilder},
         serialization::ZcashDeserializeInto,
-        transaction::TransactionExt,
+        transaction::{TransactionExt, TransactionTestExt},
     };
 
     let _init_guard = zebra_test::init();

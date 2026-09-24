@@ -186,7 +186,7 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
         serialization::{ZcashDeserializeInto, ZcashSerialize},
         transaction::{
             arbitrary::{fake_bundle_for_branch, fake_v6_transaction},
-            Transaction, TransactionExt, VerifiedUnminedTx,
+            CompressedTransaction, TransactionExt, TransactionTestExt, VerifiedUnminedTx,
         },
     };
     use zebra_consensus::ShieldedActionCounts;
@@ -222,7 +222,7 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
         Some(Amount::zero()),
     )
     .unwrap();
-    let sizing_tx: Transaction = sizing.data.as_ref().zcash_deserialize_into().unwrap();
+    let sizing_tx: CompressedTransaction = sizing.data.as_ref().zcash_deserialize_into().unwrap();
     let coinbase_counts = ShieldedActionCounts::from_transaction(&sizing_tx);
     assert!(sizing_tx.sapling_outputs().count() > 0);
     cache.store(height, Amount::zero(), Some(Amount::zero()), sizing);
@@ -259,7 +259,7 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
         })
         .collect();
     let extra_counts =
-        ShieldedActionCounts::from_transaction(&candidates[0].transaction.transaction);
+        ShieldedActionCounts::from_transaction(candidates[0].transaction.transaction.as_ref());
     let selected = select_mempool_transactions(
         &network,
         height,
@@ -276,7 +276,7 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
     );
     let counts = selected.iter().fold(coinbase_counts, |counts, (_, tx)| {
         counts.saturating_add(ShieldedActionCounts::from_transaction(
-            &tx.transaction.transaction,
+            tx.transaction.transaction.as_ref(),
         ))
     });
     assert!(counts.exceeded_limit().is_none());
@@ -298,7 +298,7 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
         Some(Amount::zero()),
     )
     .unwrap();
-    let actual_tx: Transaction = actual.data.as_ref().zcash_deserialize_into().unwrap();
+    let actual_tx: CompressedTransaction = actual.data.as_ref().zcash_deserialize_into().unwrap();
     assert_eq!(
         ShieldedActionCounts::from_transaction(&actual_tx),
         coinbase_counts

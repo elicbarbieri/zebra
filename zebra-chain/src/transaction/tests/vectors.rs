@@ -37,7 +37,7 @@ use zebra_test::{
 use super::super::*;
 
 lazy_static! {
-    pub static ref EMPTY_V5_TX: Transaction = Transaction::test_v5(
+    pub static ref EMPTY_V5_TX: CompressedTransaction = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         Vec::new(),
         Vec::new(),
@@ -114,7 +114,7 @@ fn wtx_id_struct_from_str_roundtrip() {
 fn librustzcash_tx_deserialize_and_round_trip() {
     let _init_guard = zebra_test::init();
 
-    let tx = Transaction::zcash_deserialize(&zebra_test::vectors::GENERIC_TESTNET_TX[..])
+    let tx = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::GENERIC_TESTNET_TX[..])
         .expect("transaction test vector from librustzcash should deserialize");
 
     let mut data2 = Vec::new();
@@ -127,7 +127,7 @@ fn librustzcash_tx_deserialize_and_round_trip() {
 fn librustzcash_tx_hash() {
     let _init_guard = zebra_test::init();
 
-    let tx = Transaction::zcash_deserialize(&zebra_test::vectors::GENERIC_TESTNET_TX[..])
+    let tx = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::GENERIC_TESTNET_TX[..])
         .expect("transaction test vector from librustzcash should deserialize");
 
     // TxID taken from comment in zebra_test::vectors
@@ -144,7 +144,7 @@ fn doesnt_deserialize_transaction_with_invalid_value_balance() {
     let _init_guard = zebra_test::init();
 
     let dummy_transaction =
-        Transaction::test_v4(vec![], vec![], LockTime::Height(Height(1)), Height(10));
+        CompressedTransaction::test_v4(vec![], vec![], LockTime::Height(Height(1)), Height(10));
 
     let mut input_bytes = Vec::new();
     dummy_transaction
@@ -156,7 +156,7 @@ fn doesnt_deserialize_transaction_with_invalid_value_balance() {
     // https://zips.z.cash/protocol/nu5.pdf#endian)
     input_bytes[18] = 1;
 
-    let result = Transaction::zcash_deserialize(&input_bytes[..]);
+    let result = CompressedTransaction::zcash_deserialize(&input_bytes[..]);
 
     assert!(matches!(
         result,
@@ -194,7 +194,7 @@ fn v4_value_balance_check_locates_the_field_with_joinsplits() {
         .expect("a mined transaction must serialize");
 
     // Round-tripping the untouched bytes must succeed: the balance really is zero.
-    Transaction::zcash_deserialize(&bytes[..])
+    CompressedTransaction::zcash_deserialize(&bytes[..])
         .expect("an unmodified mined transaction must deserialize");
 
     // Now make `valueBalanceSapling` non-zero. It sits immediately before the two zero
@@ -215,7 +215,7 @@ fn v4_value_balance_check_locates_the_field_with_joinsplits() {
 
     assert!(
         matches!(
-            Transaction::zcash_deserialize(&bytes[..]),
+            CompressedTransaction::zcash_deserialize(&bytes[..]),
             Err(SerializationError::BadTransactionBalance)
         ),
         "a non-zero valueBalanceSapling with no Sapling bundle must be rejected",
@@ -249,7 +249,7 @@ fn v4_transactions_in_one_block_all_round_trip() {
     for tx in &block.transactions {
         let bytes = tx.zcash_serialize_to_vec().expect("transaction serializes");
         let round_tripped =
-            Transaction::zcash_deserialize(&bytes[..]).expect("transaction round-trips");
+            CompressedTransaction::zcash_deserialize(&bytes[..]).expect("transaction round-trips");
         assert_eq!(tx.hash(), round_tripped.hash());
     }
 
@@ -284,7 +284,10 @@ fn serde_serialize_labels_v6_transactions_correctly() {
     let tx = fake_v6_transaction(NetworkUpgrade::Nu6_3, None, Some(ironwood));
     assert_eq!(tx.version(), 6);
 
-    let rendered = format!("{:?}", serde_json::to_value(&tx).expect("V6 tx serializes"));
+    let rendered = format!(
+        "{:?}",
+        serde_json::to_value(SerdeTransaction(&tx)).expect("V6 tx serializes")
+    );
 
     assert!(
         rendered.contains("V6"),
@@ -296,14 +299,17 @@ fn serde_serialize_labels_v6_transactions_correctly() {
     );
 
     // A V5 transaction must still be labelled V5 and have no Ironwood field.
-    let v5 = Transaction::test_v5(
+    let v5 = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         Vec::new(),
         Vec::new(),
         LockTime::unlocked(),
         block::Height(0),
     );
-    let rendered_v5 = format!("{:?}", serde_json::to_value(&v5).expect("V5 tx serializes"));
+    let rendered_v5 = format!(
+        "{:?}",
+        serde_json::to_value(SerdeTransaction(&v5)).expect("V5 tx serializes")
+    );
 
     assert!(rendered_v5.contains("V5"));
     assert!(!rendered_v5.contains("ironwood_shielded_data"));
@@ -394,7 +400,7 @@ fn ironwood_only_transaction_has_shielded_inputs_and_outputs() {
 fn zip143_deserialize_and_round_trip() {
     let _init_guard = zebra_test::init();
 
-    let tx1 = Transaction::zcash_deserialize(&zebra_test::vectors::ZIP143_1[..])
+    let tx1 = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::ZIP143_1[..])
         .expect("transaction test vector from ZIP143 should deserialize");
 
     let mut data1 = Vec::new();
@@ -403,7 +409,7 @@ fn zip143_deserialize_and_round_trip() {
 
     assert_eq!(&zebra_test::vectors::ZIP143_1[..], &data1[..]);
 
-    let tx2 = Transaction::zcash_deserialize(&zebra_test::vectors::ZIP143_2[..])
+    let tx2 = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::ZIP143_2[..])
         .expect("transaction test vector from ZIP143 should deserialize");
 
     let mut data2 = Vec::new();
@@ -417,7 +423,7 @@ fn zip143_deserialize_and_round_trip() {
 fn zip243_deserialize_and_round_trip() {
     let _init_guard = zebra_test::init();
 
-    let tx1 = Transaction::zcash_deserialize(&zebra_test::vectors::ZIP243_1[..])
+    let tx1 = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::ZIP243_1[..])
         .expect("transaction test vector from ZIP243 should deserialize");
 
     let mut data1 = Vec::new();
@@ -426,7 +432,7 @@ fn zip243_deserialize_and_round_trip() {
 
     assert_eq!(&zebra_test::vectors::ZIP243_1[..], &data1[..]);
 
-    let tx2 = Transaction::zcash_deserialize(&zebra_test::vectors::ZIP243_2[..])
+    let tx2 = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::ZIP243_2[..])
         .expect("transaction test vector from ZIP243 should deserialize");
 
     let mut data2 = Vec::new();
@@ -435,7 +441,7 @@ fn zip243_deserialize_and_round_trip() {
 
     assert_eq!(&zebra_test::vectors::ZIP243_2[..], &data2[..]);
 
-    let tx3 = Transaction::zcash_deserialize(&zebra_test::vectors::ZIP243_3[..])
+    let tx3 = CompressedTransaction::zcash_deserialize(&zebra_test::vectors::ZIP243_3[..])
         .expect("transaction test vector from ZIP243 should deserialize");
 
     let mut data3 = Vec::new();
@@ -469,7 +475,7 @@ fn deserialize_large_transaction() {
 
     // Create an oversized transaction. Adding the output and lock time causes
     // the transaction to overflow the threshold.
-    let oversized_tx = Transaction::test_v1(
+    let oversized_tx = CompressedTransaction::test_v1(
         inputs,
         vec![output],
         LockTime::Time(DateTime::from_timestamp(61, 0).unwrap()),
@@ -485,7 +491,7 @@ fn deserialize_large_transaction() {
     assert!(tx_data.len() > MAX_BLOCK_BYTES as usize);
 
     // The deserialization should fail because the transaction is too big.
-    Transaction::zcash_deserialize(&tx_data[..])
+    CompressedTransaction::zcash_deserialize(&tx_data[..])
         .expect_err("transaction should not deserialize due to its size");
 }
 
@@ -499,10 +505,10 @@ fn deserialize_large_transaction() {
 fn empty_v5_round_trip() {
     let _init_guard = zebra_test::init();
 
-    let tx: &Transaction = &EMPTY_V5_TX;
+    let tx: &CompressedTransaction = &EMPTY_V5_TX;
 
     let data = tx.zcash_serialize_to_vec().expect("tx should serialize");
-    let tx2: &Transaction = &data
+    let tx2: &CompressedTransaction = &data
         .zcash_deserialize_into()
         .expect("tx should deserialize");
 
@@ -523,7 +529,7 @@ fn empty_v5_round_trip() {
 fn empty_v4_round_trip() {
     let _init_guard = zebra_test::init();
 
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         Vec::new(),
         Vec::new(),
         LockTime::min_lock_time_timestamp(),
@@ -549,14 +555,14 @@ fn empty_v4_round_trip() {
 fn empty_v5_librustzcash_round_trip() {
     let _init_guard = zebra_test::init();
 
-    let tx: &Transaction = &EMPTY_V5_TX;
+    let tx: &CompressedTransaction = &EMPTY_V5_TX;
     // Transaction now wraps zcash_primitives::transaction::Transaction directly,
     // so serialization roundtrip via ZcashSerialize/ZcashDeserialize validates this.
     let _nu = tx.network_upgrade().expect("network upgrade");
     let bytes = tx
         .zcash_serialize_to_vec()
         .expect("empty V5 transaction serializes");
-    let _tx2: Transaction = bytes
+    let _tx2: CompressedTransaction = bytes
         .zcash_deserialize_into()
         .expect("empty V5 transaction deserializes");
 }
@@ -662,7 +668,7 @@ fn zip244_round_trip() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     for test in zip0244::TEST_VECTORS.iter() {
-        let tx = test.tx.zcash_deserialize_into::<Transaction>()?;
+        let tx = test.tx.zcash_deserialize_into::<CompressedTransaction>()?;
         let reencoded = tx.zcash_serialize_to_vec()?;
 
         assert_eq!(test.tx, reencoded);
@@ -678,7 +684,7 @@ fn zip244_txid() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     for test in zip0244::TEST_VECTORS.iter() {
-        let tx: Transaction = test.tx.zcash_deserialize_into()?;
+        let tx: CompressedTransaction = test.tx.zcash_deserialize_into()?;
         let txid = tx.hash();
         assert_eq!(txid.0, test.txid);
     }
@@ -691,7 +697,7 @@ fn zip244_auth_digest() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     for test in zip0244::TEST_VECTORS.iter() {
-        let transaction = test.tx.zcash_deserialize_into::<Transaction>()?;
+        let transaction = test.tx.zcash_deserialize_into::<CompressedTransaction>()?;
         let auth_digest = transaction.auth_digest();
         assert_eq!(
             auth_digest
@@ -708,7 +714,7 @@ fn zip244_auth_digest() -> Result<()> {
 fn test_vec143_1() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction = ZIP143_1.zcash_deserialize_into::<Transaction>()?;
+    let transaction = ZIP143_1.zcash_deserialize_into::<CompressedTransaction>()?;
 
     let hasher = SigHasher::new(
         &transaction,
@@ -736,7 +742,7 @@ fn test_vec143_1() -> Result<()> {
 fn test_vec143_2() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction = ZIP143_2.zcash_deserialize_into::<Transaction>()?;
+    let transaction = ZIP143_2.zcash_deserialize_into::<CompressedTransaction>()?;
 
     let value = hex::decode("2f6e04963b4c0100")?.zcash_deserialize_into::<Amount<_>>()?;
     let lock_script = Script::new(&hex::decode("53")?);
@@ -777,7 +783,7 @@ fn test_vec143_2() -> Result<()> {
 fn test_vec243_1() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction = ZIP243_1.zcash_deserialize_into::<Transaction>()?;
+    let transaction = ZIP243_1.zcash_deserialize_into::<CompressedTransaction>()?;
 
     let hasher = SigHasher::new(&transaction, NetworkUpgrade::Sapling, Arc::new(Vec::new()))
         .expect("network upgrade is valid for tx");
@@ -809,7 +815,7 @@ fn test_vec243_1() -> Result<()> {
 fn test_vec243_2() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction = ZIP243_2.zcash_deserialize_into::<Transaction>()?;
+    let transaction = ZIP243_2.zcash_deserialize_into::<CompressedTransaction>()?;
 
     let value = hex::decode("adedf02996510200")?.zcash_deserialize_into::<Amount<_>>()?;
     let lock_script = Script::new(&[]);
@@ -871,7 +877,7 @@ fn test_vec243_2() -> Result<()> {
 fn test_vec243_3() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction = ZIP243_3.zcash_deserialize_into::<Transaction>()?;
+    let transaction = ZIP243_3.zcash_deserialize_into::<CompressedTransaction>()?;
 
     let value = hex::decode("80f0fa0200000000")?.zcash_deserialize_into::<Amount<_>>()?;
     let lock_script = Script::new(&hex::decode(
@@ -937,7 +943,7 @@ fn zip143_sighash() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     for (i, test) in zip0143::TEST_VECTORS.iter().enumerate() {
-        let transaction = test.tx.zcash_deserialize_into::<Transaction>()?;
+        let transaction = test.tx.zcash_deserialize_into::<CompressedTransaction>()?;
         let (input_index, output) = match test.transparent_input {
             Some(transparent_input) => (
                 Some(transparent_input as usize),
@@ -979,7 +985,7 @@ fn zip243_sighash() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     for (i, test) in zip0243::TEST_VECTORS.iter().enumerate() {
-        let transaction = test.tx.zcash_deserialize_into::<Transaction>()?;
+        let transaction = test.tx.zcash_deserialize_into::<CompressedTransaction>()?;
         let (input_index, output) = match test.transparent_input {
             Some(transparent_input) => (
                 Some(transparent_input as usize),
@@ -1021,7 +1027,7 @@ fn zip244_sighash() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     for (i, test) in zip0244::TEST_VECTORS.iter().enumerate() {
-        let transaction = test.tx.zcash_deserialize_into::<Transaction>()?;
+        let transaction = test.tx.zcash_deserialize_into::<CompressedTransaction>()?;
 
         let all_previous_outputs: Arc<Vec<_>> = Arc::new(
             test.amounts
@@ -1180,7 +1186,9 @@ fn binding_signatures() {
                 .transactions
             {
                 // Compute bvk and verify binding sig if there's sapling data.
-                let decompressed = tx.decompress().expect("mined points decompress");
+                let decompressed = CompressedTransaction::clone(&tx)
+                    .decompress()
+                    .expect("mined points decompress");
                 if let Some(bundle) = decompressed.sapling_bundle() {
                     let version = tx.version();
 
@@ -1233,7 +1241,7 @@ fn binding_signatures() {
 fn v6_ironwood_txid_and_roundtrip() {
     let _init_guard = zebra_test::init();
 
-    let tx = Transaction::test_v6(
+    let tx = CompressedTransaction::test_v6(
         NetworkUpgrade::Nu6_3,
         Vec::new(),
         Vec::new(),
@@ -1248,7 +1256,7 @@ fn v6_ironwood_txid_and_roundtrip() {
     let bytes = tx
         .zcash_serialize_to_vec()
         .expect("v6 transaction serializes");
-    let tx2: Transaction = bytes
+    let tx2: CompressedTransaction = bytes
         .zcash_deserialize_into()
         .expect("v6 transaction deserializes");
 
@@ -1277,7 +1285,7 @@ fn v6_transaction_rejects_pre_nu6_3_branch_ids() {
         .zcash_serialize_to_vec()
         .expect("the NU6.3 fixture has a serializable V6 Orchard bundle");
 
-    let deserialized_transaction = Transaction::zcash_deserialize(&transaction_bytes[..])
+    let deserialized_transaction = CompressedTransaction::zcash_deserialize(&transaction_bytes[..])
         .expect("the unmodified NU6.3 fixture parses");
     assert_eq!(deserialized_transaction, transaction);
 
@@ -1290,9 +1298,12 @@ fn v6_transaction_rejects_pre_nu6_3_branch_ids() {
         // The wire branch ID follows the four-byte header and four-byte version group ID.
         transaction_bytes[8..12].copy_from_slice(&u32::from(branch_id).to_le_bytes());
 
-        let result_without_context = Transaction::zcash_deserialize(&transaction_bytes[..]);
-        let result_with_context =
-            Transaction::zcash_deserialize_with_context(&transaction_bytes[..], &BranchId::Nu6_3);
+        let result_without_context =
+            CompressedTransaction::zcash_deserialize(&transaction_bytes[..]);
+        let result_with_context = CompressedTransaction::zcash_deserialize_with_context(
+            &transaction_bytes[..],
+            &BranchId::Nu6_3,
+        );
 
         assert!(
             matches!(
@@ -1348,7 +1359,7 @@ fn v6_transaction_with_bundles_round_trips() {
     let bytes = tx
         .zcash_serialize_to_vec()
         .expect("v6 transaction serializes");
-    let tx2: Transaction = bytes
+    let tx2: CompressedTransaction = bytes
         .zcash_deserialize_into()
         .expect("v6 transaction deserializes");
 
@@ -1417,7 +1428,7 @@ fn v6_orchard_bundle_rejects_cross_address_flag_on_the_wire() {
     );
 
     bytes[flags_offset] |= 0b0000_0100;
-    let result: Result<Transaction, _> = bytes.zcash_deserialize_into();
+    let result: Result<CompressedTransaction, _> = bytes.zcash_deserialize_into();
     assert!(
         result.is_err(),
         "a v6 Orchard bundle with enableCrossAddress must be rejected on the wire",
@@ -1434,7 +1445,7 @@ fn v6_orchard_bundle_rejects_cross_address_flag_on_the_wire() {
     let bytes = tx
         .zcash_serialize_to_vec()
         .expect("v6 transaction serializes");
-    let tx2: Transaction = bytes
+    let tx2: CompressedTransaction = bytes
         .zcash_deserialize_into()
         .expect("a v6 Ironwood bundle with enableCrossAddress round-trips");
 
@@ -1453,7 +1464,7 @@ fn test_coinbase_script() -> Result<()> {
 
     let tx = hex::decode("0400008085202f89010000000000000000000000000000000000000000000000000000000000000000ffffffff0503b0e72100ffffffff04e8bbe60e000000001976a914ba92ff06081d5ff6542af8d3b2d209d29ba6337c88ac40787d010000000017a914931fec54c1fea86e574462cc32013f5400b891298738c94d010000000017a914c7a4285ed7aed78d8c0e28d7f1839ccb4046ab0c87286bee000000000017a914d45cb1adffb5215a42720532a076f02c7c778c908700000000b0e721000000000000000000000000").unwrap();
 
-    let transaction = tx.zcash_deserialize_into::<Transaction>()?;
+    let transaction = tx.zcash_deserialize_into::<CompressedTransaction>()?;
 
     let recoded_tx = transaction.zcash_serialize_to_vec().unwrap();
     assert_eq!(tx, recoded_tx);
@@ -1484,7 +1495,7 @@ fn orchard_rk_identity_point() {
 
     let expected_rk: [u8; 32] = bundle.actions().head.rk().into();
 
-    let tx = Transaction::test_v5_with_orchard(
+    let tx = CompressedTransaction::test_v5_with_orchard(
         NetworkUpgrade::Nu5,
         Vec::new(),
         Vec::new(),
@@ -1505,10 +1516,10 @@ fn orchard_rk_identity_point() {
 
     tx_bytes[V5_FIRST_ACTION_RK_OFFSET..V5_FIRST_ACTION_RK_OFFSET + 32].fill(0);
 
-    let parsed =
-        Transaction::zcash_deserialize(&tx_bytes[..]).expect("rk is not decompressed at parse");
+    let parsed = CompressedTransaction::zcash_deserialize(&tx_bytes[..])
+        .expect("rk is not decompressed at parse");
     assert!(matches!(
-        parsed.decompress(),
+        parsed.clone().decompress(),
         Err(zcash_primitives::transaction::DecompressionError::Orchard(
             _
         ))
@@ -1591,7 +1602,7 @@ fn coinbase_v5_with_sapling_spends_deserializes_successfully() {
     // Deserialize it — the parser must now reject coinbase transactions with
     // Sapling spends before allocating spend vectors (GHSA-rgwx-8r98-p34c fix).
     let err = serialized
-        .zcash_deserialize_into::<Transaction>()
+        .zcash_deserialize_into::<CompressedTransaction>()
         .expect_err("coinbase with Sapling spends must be rejected during deserialization");
 
     assert!(
@@ -1607,8 +1618,8 @@ fn coinbase_v5_with_sapling_spends_deserializes_successfully() {
 fn deserialize_coinbase_tx_with_data(
     height: u32,
     data_len: usize,
-) -> Result<Transaction, SerializationError> {
-    let tx = Transaction::test_v1(
+) -> Result<CompressedTransaction, SerializationError> {
+    let tx = CompressedTransaction::test_v1(
         vec![transparent::Input::Coinbase {
             height: Height(height),
             data: vec![0x5a; data_len],
@@ -1623,7 +1634,7 @@ fn deserialize_coinbase_tx_with_data(
     let serialized = tx
         .zcash_serialize_to_vec()
         .expect("coinbase transaction must serialize");
-    serialized.zcash_deserialize_into::<Transaction>()
+    serialized.zcash_deserialize_into::<CompressedTransaction>()
 }
 
 /// The coinbase scriptSig length must be in {2 .. 100} bytes on the production parse path.
@@ -1673,7 +1684,7 @@ fn expiry_height_preserves_out_of_range_values() {
     let _init_guard = zebra_test::init();
 
     for raw in [0, 499_999_999, 500_000_000, 2_147_483_648, u32::MAX] {
-        let tx = Transaction::test_v5(
+        let tx = CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             Vec::new(),
             Vec::new(),
@@ -1689,7 +1700,7 @@ fn expiry_height_preserves_out_of_range_values() {
             .zcash_serialize_to_vec()
             .expect("transaction must serialize");
         let parsed = serialized
-            .zcash_deserialize_into::<Transaction>()
+            .zcash_deserialize_into::<CompressedTransaction>()
             .expect("parsing does not enforce the expiry maximum, the verifier does");
         assert_eq!(parsed.expiry_height(), expected);
     }
@@ -1725,14 +1736,17 @@ fn sprout_aggregate_value_balance_out_of_range_is_rejected() {
     };
 
     // One JoinSplit: the aggregate is exactly MAX_MONEY, still in range.
-    let in_range = Transaction::test_v4_with_sprout(Some(bundle(vec![joinsplit.clone()])));
+    let in_range =
+        CompressedTransaction::test_v4_with_sprout(Some(bundle(vec![joinsplit.clone()])));
     in_range
         .sprout_value_balance()
         .expect("an aggregate of MAX_MONEY is in range");
 
     // Two JoinSplits: the aggregate is 2 * MAX_MONEY, out of range.
-    let out_of_range =
-        Transaction::test_v4_with_sprout(Some(bundle(vec![joinsplit.clone(), joinsplit])));
+    let out_of_range = CompressedTransaction::test_v4_with_sprout(Some(bundle(vec![
+        joinsplit.clone(),
+        joinsplit,
+    ])));
     assert!(
         matches!(
             out_of_range.sprout_value_balance(),
@@ -1777,7 +1791,7 @@ fn non_coinbase_with_null_prevout_input_is_not_valid_non_coinbase() {
     raw.push(0);
     raw.extend_from_slice(&0_u32.to_le_bytes()); // lock time
 
-    let tx: Transaction = raw
+    let tx: CompressedTransaction = raw
         .zcash_deserialize_into()
         .expect("a null-prevout input with a valid height script parses");
 
@@ -1795,7 +1809,7 @@ fn non_coinbase_with_null_prevout_input_is_not_valid_non_coinbase() {
     let mut regular = raw.clone();
     regular[4] = 1; // input count
     regular.drain(5..5 + 32 + 4 + 1 + 2 + 4); // drop input 0
-    let tx: Transaction = regular
+    let tx: CompressedTransaction = regular
         .zcash_deserialize_into()
         .expect("a single regular input parses");
     assert!(!tx.is_coinbase());

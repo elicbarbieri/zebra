@@ -8,7 +8,7 @@ use crate::{
     },
     block::{Block, Height},
     parameters::{Network, NetworkUpgrade},
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
     transparent::{Address, Output},
 };
 
@@ -206,7 +206,7 @@ pub fn subsidy_is_valid(
 ///
 /// [7.1.2]: https://zips.z.cash/protocol/protocol.pdf#txnconsensus
 pub fn miner_fees_are_valid(
-    coinbase_tx: &Transaction,
+    coinbase_tx: &CompressedTransaction,
     height: Height,
     block_miner_fees: Amount<NonNegative>,
     expected_block_subsidy: Amount<NonNegative>,

@@ -62,7 +62,7 @@ pub(super) fn p2pk_lock_script(pubkey: &[u8; 33]) -> transparent::Script {
 mod tests {
     use zebra_chain::{
         block::Height,
-        transaction::{self, LockTime, Transaction},
+        transaction::{self, CompressedTransaction, LockTime, TransactionTestExt},
     };
 
     use super::*;
@@ -103,8 +103,8 @@ mod tests {
     fn make_v4_tx(
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
-    ) -> Transaction {
-        Transaction::test_v4(
+    ) -> CompressedTransaction {
+        CompressedTransaction::test_v4(
             inputs,
             outputs,
             LockTime::min_lock_time_timestamp(),

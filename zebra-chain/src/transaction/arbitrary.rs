@@ -19,7 +19,7 @@ use crate::{
     block::{self, arbitrary::MAX_PARTIAL_CHAIN_BLOCKS},
     parameters::{Network, NetworkUpgrade},
     serialization::{self, ZcashDeserializeInto},
-    transaction::TransactionExt,
+    transaction::{TransactionExt, TransactionTestExt},
     transparent,
     value_balance::{ValueBalance, ValueBalanceError},
     LedgerState,
@@ -28,7 +28,7 @@ use crate::{
 use zcash_primitives::transaction::TxVersion;
 use zcash_transparent;
 
-use super::{LockTime, Transaction, UnminedTx, VerifiedUnminedTx};
+use super::{CompressedTransaction, LockTime, UnminedTx, VerifiedUnminedTx};
 
 /// Returns the librustzcash consensus branch ID selected for the test transaction and its bundles.
 fn branch_id_of(network_upgrade: NetworkUpgrade) -> zcash_protocol::consensus::BranchId {
@@ -46,41 +46,160 @@ pub const MAX_ARBITRARY_ITEMS: usize = 4;
 
 // TODO: if needed, fixup transaction outputs
 //       (currently 0..=9 outputs, consensus rules require 1..)
-impl Transaction {
+/// Proptest strategies and value fixers for [`CompressedTransaction`]
+pub trait TransactionArbitrary: Sized {
     /// Generate a proptest strategy for V1 Transactions
-    pub fn v1_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
-        (
-            transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
-            vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
-            any::<LockTime>(),
-        )
-            .prop_map(|(inputs, outputs, lock_time)| {
-                Transaction::test_v1(inputs, outputs, lock_time)
-            })
-            .boxed()
-    }
+    fn v1_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
 
     /// Generate a proptest strategy for V2 Transactions
     ///
     /// Note: the new Transaction type doesn't support arbitrary Sprout JoinSplit data
     /// in proptest strategies, so this generates transparent-only V2 transactions.
-    pub fn v2_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+    fn v2_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
+
+    /// Generate a proptest strategy for V3 Transactions
+    ///
+    /// Note: the new Transaction type doesn't support arbitrary Sprout JoinSplit data
+    /// in proptest strategies, so this generates transparent-only V3 transactions.
+    fn v3_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
+
+    /// Generate a proptest strategy for V4 Transactions
+    ///
+    /// Note: the new Transaction type doesn't support arbitrary Sapling/Sprout shielded
+    /// data in proptest strategies, so this generates transparent-only V4 transactions.
+    fn v4_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
+
+    /// Generate a proptest strategy for V5 Transactions
+    ///
+    /// Note: the new Transaction type doesn't support arbitrary Sapling/Orchard shielded
+    /// data in proptest strategies, so this generates transparent-only V5 transactions.
+    fn v5_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
+
+    /// Generate a proptest strategy for V6 Transactions
+    ///
+    /// Note: like [`Self::v5_strategy`], the new Transaction type doesn't support arbitrary
+    /// shielded data in proptest strategies, so this generates transparent-only V6 transactions.
+    fn v6_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
+
+    /// Proptest Strategy for creating a Vector of transactions where the first
+    /// transaction is always the only coinbase transaction
+    fn vec_strategy(ledger_state: LedgerState, len: usize) -> BoxedStrategy<Vec<Arc<Self>>>;
+
+    /// Apply `f` to the transparent output values in this transaction.
+    ///
+    /// Note: Sprout/sapling/orchard value mutations are not supported with
+    /// the new Transaction type (proptest strategies generate transparent-only txs).
+    fn for_each_value_mut<F>(&mut self, f: F)
+    where
+        F: FnMut(&mut Amount<NonNegative>);
+
+    /// Apply `f` to the sapling value balance and orchard value balance.
+    ///
+    /// Note: Not implemented for the new Transaction type since proptest strategies
+    /// generate transparent-only transactions. This is a no-op.
+    fn for_each_value_balance_mut<F>(&mut self, f: F)
+    where
+        F: FnMut(&mut Amount<NegativeAllowed>);
+
+    /// Fixup transparent values and shielded value balances,
+    /// so that transaction and chain value pools won't overflow MAX_MONEY.
+    ///
+    /// These fixes are applied to coinbase and non-coinbase transactions.
+    //
+    // TODO: do we want to allow overflow, based on an arbitrary bool?
+    fn fix_overflow(&mut self);
+
+    /// Fixup transparent values and shielded value balances,
+    /// so that this transaction passes the "non-negative chain value pool" checks.
+    /// (These checks use the sum of unspent outputs for each transparent and shielded pool.)
+    ///
+    /// These fixes are applied to coinbase and non-coinbase transactions.
+    ///
+    /// `chain_value_pools` contains the chain value pool balances,
+    /// as of the previous transaction in this block
+    /// (or the last transaction in the previous block).
+    ///
+    /// `outputs` must contain all the [`transparent::Output`]s spent in this transaction.
+    ///
+    /// Currently, these fixes almost always leave some remaining value in each transparent
+    /// and shielded chain value pool.
+    ///
+    /// Before fixing the chain value balances, this method calls `fix_overflow`
+    /// to make sure that transaction and chain value pools don't overflow MAX_MONEY.
+    ///
+    /// After fixing the chain value balances, this method calls `fix_remaining_value`
+    /// to fix the remaining value in the transaction value pool.
+    ///
+    /// Returns the remaining transaction value, and the updated chain value balances.
+    ///
+    /// # Panics
+    ///
+    /// If any spent [`transparent::Output`] is missing from
+    /// [`transparent::OutPoint`]s.
+    //
+    // TODO: take some extra arbitrary flags, which select between zero and non-zero
+    //       remaining value in each chain value pool
+    fn fix_chain_value_pools(
+        &mut self,
+        chain_value_pools: ValueBalance<NonNegative>,
+        outputs: &HashMap<transparent::OutPoint, transparent::Output>,
+    ) -> Result<(Amount<NonNegative>, ValueBalance<NonNegative>), ValueBalanceError>;
+
+    /// Fixup non-coinbase transparent values and shielded value balances,
+    /// so that this transaction passes the "non-negative remaining transaction value"
+    /// check. (This check uses the sum of inputs minus outputs.)
+    ///
+    /// Returns the remaining transaction value.
+    ///
+    /// `outputs` must contain all the [`transparent::Output`]s spent in this transaction.
+    ///
+    /// Currently, these fixes almost always leave some remaining value in the
+    /// transaction value pool.
+    ///
+    /// # Panics
+    ///
+    /// If any spent [`transparent::Output`] is missing from
+    /// [`transparent::OutPoint`]s.
+    //
+    // TODO: split this method up, after we've implemented chain value balance adjustments
+    //
+    // TODO: take an extra arbitrary bool, which selects between zero and non-zero
+    //       remaining value in the transaction value pool
+    fn fix_remaining_value(
+        &mut self,
+        outputs: &HashMap<transparent::OutPoint, transparent::Output>,
+    ) -> Result<Amount<NonNegative>, ValueBalanceError>;
+
+    /// Strategy for any transaction valid under `ledger_state`
+    fn strategy(ledger_state: LedgerState) -> BoxedStrategy<Self>;
+}
+
+impl TransactionArbitrary for CompressedTransaction {
+    fn v1_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
         (
             transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
             vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
             any::<LockTime>(),
         )
             .prop_map(|(inputs, outputs, lock_time)| {
-                Transaction::test_v2(inputs, outputs, lock_time)
+                CompressedTransaction::test_v1(inputs, outputs, lock_time)
             })
             .boxed()
     }
 
-    /// Generate a proptest strategy for V3 Transactions
-    ///
-    /// Note: the new Transaction type doesn't support arbitrary Sprout JoinSplit data
-    /// in proptest strategies, so this generates transparent-only V3 transactions.
-    pub fn v3_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+    fn v2_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+        (
+            transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
+            vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
+            any::<LockTime>(),
+        )
+            .prop_map(|(inputs, outputs, lock_time)| {
+                CompressedTransaction::test_v2(inputs, outputs, lock_time)
+            })
+            .boxed()
+    }
+
+    fn v3_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
         (
             transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
             vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
@@ -88,16 +207,12 @@ impl Transaction {
             any::<block::Height>(),
         )
             .prop_map(|(inputs, outputs, lock_time, expiry_height)| {
-                Transaction::test_v3(inputs, outputs, lock_time, expiry_height)
+                CompressedTransaction::test_v3(inputs, outputs, lock_time, expiry_height)
             })
             .boxed()
     }
 
-    /// Generate a proptest strategy for V4 Transactions
-    ///
-    /// Note: the new Transaction type doesn't support arbitrary Sapling/Sprout shielded
-    /// data in proptest strategies, so this generates transparent-only V4 transactions.
-    pub fn v4_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+    fn v4_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
         (
             transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
             vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
@@ -105,16 +220,12 @@ impl Transaction {
             any::<block::Height>(),
         )
             .prop_map(|(inputs, outputs, lock_time, expiry_height)| {
-                Transaction::test_v4(inputs, outputs, lock_time, expiry_height)
+                CompressedTransaction::test_v4(inputs, outputs, lock_time, expiry_height)
             })
             .boxed()
     }
 
-    /// Generate a proptest strategy for V5 Transactions
-    ///
-    /// Note: the new Transaction type doesn't support arbitrary Sapling/Orchard shielded
-    /// data in proptest strategies, so this generates transparent-only V5 transactions.
-    pub fn v5_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+    fn v5_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
         (
             NetworkUpgrade::nu5_branch_id_strategy(),
             any::<LockTime>(),
@@ -151,7 +262,7 @@ impl Transaction {
                             )
                         });
 
-                    Transaction::test_v5_with_orchard(
+                    CompressedTransaction::test_v5_with_orchard(
                         nu,
                         inputs,
                         outputs,
@@ -164,11 +275,7 @@ impl Transaction {
             .boxed()
     }
 
-    /// Generate a proptest strategy for V6 Transactions
-    ///
-    /// Note: like [`Self::v5_strategy`], the new Transaction type doesn't support arbitrary
-    /// shielded data in proptest strategies, so this generates transparent-only V6 transactions.
-    pub fn v6_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+    fn v6_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
         (
             NetworkUpgrade::nu6_3_branch_id_strategy(),
             any::<LockTime>(),
@@ -229,7 +336,7 @@ impl Transaction {
                         },
                     );
 
-                    Transaction::test_v6_with_bundles(
+                    CompressedTransaction::test_v6_with_bundles(
                         nu,
                         inputs,
                         outputs,
@@ -243,17 +350,12 @@ impl Transaction {
             .boxed()
     }
 
-    /// Proptest Strategy for creating a Vector of transactions where the first
-    /// transaction is always the only coinbase transaction
-    pub fn vec_strategy(
-        mut ledger_state: LedgerState,
-        len: usize,
-    ) -> BoxedStrategy<Vec<Arc<Self>>> {
+    fn vec_strategy(mut ledger_state: LedgerState, len: usize) -> BoxedStrategy<Vec<Arc<Self>>> {
         // TODO: fixup coinbase miner subsidy
-        let coinbase = Transaction::arbitrary_with(ledger_state.clone()).prop_map(Arc::new);
+        let coinbase = CompressedTransaction::strategy(ledger_state.clone()).prop_map(Arc::new);
         ledger_state.has_coinbase = false;
         let remainder = vec(
-            Transaction::arbitrary_with(ledger_state).prop_map(Arc::new),
+            CompressedTransaction::strategy(ledger_state).prop_map(Arc::new),
             0..=len,
         );
 
@@ -265,11 +367,7 @@ impl Transaction {
             .boxed()
     }
 
-    /// Apply `f` to the transparent output values in this transaction.
-    ///
-    /// Note: Sprout/sapling/orchard value mutations are not supported with
-    /// the new Transaction type (proptest strategies generate transparent-only txs).
-    pub fn for_each_value_mut<F>(&mut self, mut f: F)
+    fn for_each_value_mut<F>(&mut self, mut f: F)
     where
         F: FnMut(&mut Amount<NonNegative>),
     {
@@ -287,11 +385,7 @@ impl Transaction {
         }
     }
 
-    /// Apply `f` to the sapling value balance and orchard value balance.
-    ///
-    /// Note: Not implemented for the new Transaction type since proptest strategies
-    /// generate transparent-only transactions. This is a no-op.
-    pub fn for_each_value_balance_mut<F>(&mut self, _f: F)
+    fn for_each_value_balance_mut<F>(&mut self, _f: F)
     where
         F: FnMut(&mut Amount<NegativeAllowed>),
     {
@@ -302,13 +396,7 @@ impl Transaction {
         // a `&mut` to.
     }
 
-    /// Fixup transparent values and shielded value balances,
-    /// so that transaction and chain value pools won't overflow MAX_MONEY.
-    ///
-    /// These fixes are applied to coinbase and non-coinbase transactions.
-    //
-    // TODO: do we want to allow overflow, based on an arbitrary bool?
-    pub fn fix_overflow(&mut self) {
+    fn fix_overflow(&mut self) {
         fn scale_to_avoid_overflow<C: amount::Constraint>(amount: &mut Amount<C>)
         where
             Amount<C>: Copy,
@@ -334,37 +422,7 @@ impl Transaction {
         // Shielded value balances are zero in proptest transactions, no fixup needed.
     }
 
-    /// Fixup transparent values and shielded value balances,
-    /// so that this transaction passes the "non-negative chain value pool" checks.
-    /// (These checks use the sum of unspent outputs for each transparent and shielded pool.)
-    ///
-    /// These fixes are applied to coinbase and non-coinbase transactions.
-    ///
-    /// `chain_value_pools` contains the chain value pool balances,
-    /// as of the previous transaction in this block
-    /// (or the last transaction in the previous block).
-    ///
-    /// `outputs` must contain all the [`transparent::Output`]s spent in this transaction.
-    ///
-    /// Currently, these fixes almost always leave some remaining value in each transparent
-    /// and shielded chain value pool.
-    ///
-    /// Before fixing the chain value balances, this method calls `fix_overflow`
-    /// to make sure that transaction and chain value pools don't overflow MAX_MONEY.
-    ///
-    /// After fixing the chain value balances, this method calls `fix_remaining_value`
-    /// to fix the remaining value in the transaction value pool.
-    ///
-    /// Returns the remaining transaction value, and the updated chain value balances.
-    ///
-    /// # Panics
-    ///
-    /// If any spent [`transparent::Output`] is missing from
-    /// [`transparent::OutPoint`]s.
-    //
-    // TODO: take some extra arbitrary flags, which select between zero and non-zero
-    //       remaining value in each chain value pool
-    pub fn fix_chain_value_pools(
+    fn fix_chain_value_pools(
         &mut self,
         chain_value_pools: ValueBalance<NonNegative>,
         outputs: &HashMap<transparent::OutPoint, transparent::Output>,
@@ -412,77 +470,7 @@ impl Transaction {
         Ok((remaining_transaction_value, chain_value_pools))
     }
 
-    /// Returns the total input value of this transaction's value pool.
-    ///
-    /// This is the sum of transparent inputs, sprout input values,
-    /// and if positive, the sapling, orchard, and ironwood value balances.
-    ///
-    /// `outputs` must contain all the [`transparent::Output`]s spent in this transaction.
-    fn input_value_pool(
-        &self,
-        outputs: &HashMap<transparent::OutPoint, transparent::Output>,
-    ) -> Result<Amount<NonNegative>, ValueBalanceError> {
-        let transparent_inputs = self
-            .inputs()
-            .iter()
-            .map(|input| input.value_from_outputs(outputs))
-            .sum::<Result<Amount<NonNegative>, amount::Error>>()
-            .map_err(ValueBalanceError::Transparent)?;
-        // TODO: fix callers which cause overflows, check for:
-        //       cached `outputs` that don't go through `fix_overflow`, and
-        //       values much larger than MAX_MONEY
-        //.expect("chain is limited to MAX_MONEY");
-
-        // Proptest transactions don't have Sprout joinsplits, so sprout_inputs is always zero.
-        let sprout_inputs = Amount::<NonNegative>::zero();
-
-        // positive value balances add to the transaction value pool
-        let sapling_input = self
-            .sapling_value_balance()
-            .sapling_amount()
-            .constrain::<NonNegative>()
-            .unwrap_or_else(|_| Amount::zero());
-
-        let orchard_input = self
-            .orchard_value_balance()
-            .orchard_amount()
-            .constrain::<NonNegative>()
-            .unwrap_or_else(|_| Amount::zero());
-
-        let ironwood_input = self
-            .ironwood_value_balance()
-            .ironwood_amount()
-            .constrain::<NonNegative>()
-            .unwrap_or_else(|_| Amount::zero());
-
-        let transaction_input_value_pool =
-            (transparent_inputs + sprout_inputs + sapling_input + orchard_input + ironwood_input)
-                .expect("chain is limited to MAX_MONEY");
-
-        Ok(transaction_input_value_pool)
-    }
-
-    /// Fixup non-coinbase transparent values and shielded value balances,
-    /// so that this transaction passes the "non-negative remaining transaction value"
-    /// check. (This check uses the sum of inputs minus outputs.)
-    ///
-    /// Returns the remaining transaction value.
-    ///
-    /// `outputs` must contain all the [`transparent::Output`]s spent in this transaction.
-    ///
-    /// Currently, these fixes almost always leave some remaining value in the
-    /// transaction value pool.
-    ///
-    /// # Panics
-    ///
-    /// If any spent [`transparent::Output`] is missing from
-    /// [`transparent::OutPoint`]s.
-    //
-    // TODO: split this method up, after we've implemented chain value balance adjustments
-    //
-    // TODO: take an extra arbitrary bool, which selects between zero and non-zero
-    //       remaining value in the transaction value pool
-    pub fn fix_remaining_value(
+    fn fix_remaining_value(
         &mut self,
         outputs: &HashMap<transparent::OutPoint, transparent::Output>,
     ) -> Result<Amount<NonNegative>, ValueBalanceError> {
@@ -497,7 +485,7 @@ impl Transaction {
             return Ok(Amount::zero());
         }
 
-        let mut remaining_input_value = self.input_value_pool(outputs)?;
+        let mut remaining_input_value = input_value_pool(self, outputs)?;
 
         // assign remaining input value to outputs,
         // zeroing any outputs that would exceed the input value
@@ -538,33 +526,8 @@ impl Transaction {
 
         Ok(remaining_transaction_value)
     }
-}
 
-impl Arbitrary for LockTime {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: ()) -> Self::Strategy {
-        prop_oneof![
-            (block::Height::MIN.0..=LockTime::MAX_HEIGHT.0)
-                .prop_map(|n| LockTime::Height(block::Height(n))),
-            (LockTime::MIN_TIMESTAMP..=LockTime::MAX_TIMESTAMP).prop_map(|n| {
-                LockTime::Time(
-                    Utc.timestamp_opt(n, 0)
-                        .single()
-                        .expect("in-range number of seconds and valid nanosecond"),
-                )
-            })
-        ]
-        .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl Arbitrary for Transaction {
-    type Parameters = LedgerState;
-
-    fn arbitrary_with(ledger_state: Self::Parameters) -> Self::Strategy {
+    fn strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
         match ledger_state.transaction_version_override() {
             Some(1) => return Self::v1_strategy(ledger_state),
             Some(2) => return Self::v2_strategy(ledger_state),
@@ -616,6 +579,75 @@ impl Arbitrary for Transaction {
             .boxed(),
         }
     }
+}
+
+/// Returns the total input value of this transaction's value pool.
+///
+/// This is the sum of transparent inputs, sprout input values,
+/// and if positive, the sapling, orchard, and ironwood value balances.
+///
+/// `outputs` must contain all the [`transparent::Output`]s spent in this transaction.
+fn input_value_pool(
+    transaction: &CompressedTransaction,
+    outputs: &HashMap<transparent::OutPoint, transparent::Output>,
+) -> Result<Amount<NonNegative>, ValueBalanceError> {
+    let transparent_inputs = transaction
+        .inputs()
+        .iter()
+        .map(|input| input.value_from_outputs(outputs))
+        .sum::<Result<Amount<NonNegative>, amount::Error>>()
+        .map_err(ValueBalanceError::Transparent)?;
+    // TODO: fix callers which cause overflows, check for:
+    //       cached `outputs` that don't go through `fix_overflow`, and
+    //       values much larger than MAX_MONEY
+    //.expect("chain is limited to MAX_MONEY");
+
+    // Proptest transactions don't have Sprout joinsplits, so sprout_inputs is always zero.
+    let sprout_inputs = Amount::<NonNegative>::zero();
+
+    // positive value balances add to the transaction value pool
+    let sapling_input = transaction
+        .sapling_value_balance()
+        .sapling_amount()
+        .constrain::<NonNegative>()
+        .unwrap_or_else(|_| Amount::zero());
+
+    let orchard_input = transaction
+        .orchard_value_balance()
+        .orchard_amount()
+        .constrain::<NonNegative>()
+        .unwrap_or_else(|_| Amount::zero());
+
+    let ironwood_input = transaction
+        .ironwood_value_balance()
+        .ironwood_amount()
+        .constrain::<NonNegative>()
+        .unwrap_or_else(|_| Amount::zero());
+
+    let transaction_input_value_pool =
+        (transparent_inputs + sprout_inputs + sapling_input + orchard_input + ironwood_input)
+            .expect("chain is limited to MAX_MONEY");
+
+    Ok(transaction_input_value_pool)
+}
+
+impl Arbitrary for LockTime {
+    type Parameters = ();
+
+    fn arbitrary_with(_args: ()) -> Self::Strategy {
+        prop_oneof![
+            (block::Height::MIN.0..=LockTime::MAX_HEIGHT.0)
+                .prop_map(|n| LockTime::Height(block::Height(n))),
+            (LockTime::MIN_TIMESTAMP..=LockTime::MAX_TIMESTAMP).prop_map(|n| {
+                LockTime::Time(
+                    Utc.timestamp_opt(n, 0)
+                        .single()
+                        .expect("in-range number of seconds and valid nanosecond"),
+                )
+            })
+        ]
+        .boxed()
+    }
 
     type Strategy = BoxedStrategy<Self>;
 }
@@ -624,7 +656,7 @@ impl Arbitrary for UnminedTx {
     type Parameters = ();
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        any::<Transaction>()
+        CompressedTransaction::strategy(LedgerState::default())
             .prop_map(|tx| UnminedTx::from(Arc::new(tx)))
             .boxed()
     }
@@ -696,10 +728,10 @@ impl Arbitrary for VerifiedUnminedTx {
 /// transaction at the given height. Used to test V5 sighash/serialization
 /// with real transparent data from the test vector blocks.
 pub fn transaction_to_fake_v5(
-    trans: &Transaction,
+    trans: &CompressedTransaction,
     network: &Network,
     height: block::Height,
-) -> Transaction {
+) -> CompressedTransaction {
     let block_nu = NetworkUpgrade::current(network, height);
 
     match trans.tx_version() {
@@ -731,7 +763,7 @@ pub fn transaction_to_fake_v5(
             });
 
             // For V4, carry over the sapling bundle (already in zcash_primitives format)
-            let sapling_bundle = trans.0.sapling_bundle().cloned();
+            let sapling_bundle = trans.sapling_bundle().cloned();
 
             let tx_data = zp_tx::CompressedTransactionData::from_parts(
                 TxVersion::V5,
@@ -744,7 +776,7 @@ pub fn transaction_to_fake_v5(
                 None,
             );
 
-            Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
+            tx_data.freeze().expect("rebuilt from valid transaction")
         }
     }
 }
@@ -752,7 +784,7 @@ pub fn transaction_to_fake_v5(
 /// Iterate over transactions in the block test vectors for the specified `network`.
 pub fn test_transactions(
     network: &Network,
-) -> impl DoubleEndedIterator<Item = (block::Height, Arc<Transaction>)> {
+) -> impl DoubleEndedIterator<Item = (block::Height, Arc<CompressedTransaction>)> {
     let blocks = network.block_iter();
 
     transactions_from_blocks(blocks)
@@ -761,7 +793,7 @@ pub fn test_transactions(
 /// Returns an iterator over V5 transactions extracted from the given blocks.
 pub fn v5_transactions<'b>(
     blocks: impl DoubleEndedIterator<Item = (&'b u32, &'b &'static [u8])> + 'b,
-) -> impl DoubleEndedIterator<Item = Transaction> + 'b {
+) -> impl DoubleEndedIterator<Item = CompressedTransaction> + 'b {
     transactions_from_blocks(blocks).filter_map(|(_, tx)| match tx.tx_version() {
         TxVersion::V5 | TxVersion::V6 => Some((*tx).clone()),
         _ => None,
@@ -771,7 +803,7 @@ pub fn v5_transactions<'b>(
 /// Generate an iterator over ([`block::Height`], [`Arc<Transaction>`]).
 pub fn transactions_from_blocks<'a>(
     blocks: impl DoubleEndedIterator<Item = (&'a u32, &'a &'static [u8])> + 'a,
-) -> impl DoubleEndedIterator<Item = (block::Height, Arc<Transaction>)> + 'a {
+) -> impl DoubleEndedIterator<Item = (block::Height, Arc<CompressedTransaction>)> + 'a {
     blocks.flat_map(|(&block_height, &block_bytes)| {
         let block = block_bytes
             .zcash_deserialize_into::<block::Block>()

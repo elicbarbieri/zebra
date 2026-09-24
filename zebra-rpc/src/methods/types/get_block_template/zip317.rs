@@ -16,8 +16,8 @@ use zebra_chain::{
     parameters::{Network, NetworkUpgrade},
     serialization::{CompactSizeMessage, ZcashDeserializeInto, ZcashSerialize},
     transaction::{
-        self, zip317::BLOCK_UNPAID_ACTION_LIMIT, Transaction, VerifiedUnminedTx,
-        MIN_TRANSPARENT_TX_SIZE,
+        self, zip317::BLOCK_UNPAID_ACTION_LIMIT, CompressedTransaction, TransactionExt,
+        VerifiedUnminedTx, MIN_TRANSPARENT_TX_SIZE,
     },
 };
 use zebra_consensus::{ShieldedActionCounts, MAX_BLOCK_SIGOPS};
@@ -125,7 +125,7 @@ pub fn select_mempool_transactions(
     let Some(block_sigops) = remaining_block_sigops.checked_sub(fake_coinbase_tx.sigops) else {
         return selected_txs;
     };
-    let coinbase: Transaction = fake_coinbase_tx
+    let coinbase: CompressedTransaction = fake_coinbase_tx
         .data
         .as_ref()
         .zcash_deserialize_into()
@@ -392,7 +392,7 @@ impl ShieldedBudget {
 
     /// Adds `transaction` to the budget and returns `true`, or returns `false` and leaves the
     /// budget unchanged if it would exceed a limit.
-    fn try_add(&mut self, transaction: &Transaction) -> bool {
+    fn try_add(&mut self, transaction: &impl TransactionExt) -> bool {
         if !self.applies {
             return true;
         }
@@ -448,7 +448,7 @@ impl TryUpdateBlockLimits for VerifiedUnminedTx {
             && self.unpaid_actions <= *remaining_block_unpaid_actions
             // Checked last, and only committed once the other limits pass, so the shielded
             // budget is not consumed by a transaction that is then rejected for its size.
-            && remaining_shielded.try_add(&self.transaction.transaction)
+            && remaining_shielded.try_add(self.transaction.transaction.as_ref())
         {
             *remaining_block_bytes -= self.transaction.size;
             *remaining_block_sigops -= tx_block_sigops;
