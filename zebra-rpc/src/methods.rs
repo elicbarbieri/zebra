@@ -4256,7 +4256,16 @@ impl SendRawTransactionResponse {
 #[serde(untagged)]
 pub enum GetBlockResponse {
     /// The request block, hex-encoded.
-    Raw(#[serde(with = "hex")] SerializedBlock),
+    //
+    // - Encode: `const_hex` (largest response Zebra encodes; `hex` builds it one `char` at a time)
+    // - Decode: `hex` (input parsing, unchanged)
+    Raw(
+        #[serde(
+            serialize_with = "const_hex::serde::no_prefix::serialize",
+            deserialize_with = "hex::deserialize"
+        )]
+        SerializedBlock,
+    ),
     /// The block object.
     Object(Box<BlockObject>),
 }
@@ -4618,7 +4627,14 @@ impl Default for GetBlockHashResponse {
 #[serde(untagged)]
 pub enum GetRawTransactionResponse {
     /// The raw transaction, encoded as hex bytes.
-    Raw(#[serde(with = "hex")] SerializedTransaction),
+    // `const_hex` encode / `hex` decode (see `GetBlockResponse::Raw`)
+    Raw(
+        #[serde(
+            serialize_with = "const_hex::serde::no_prefix::serialize",
+            deserialize_with = "hex::deserialize"
+        )]
+        SerializedTransaction,
+    ),
     /// The transaction object.
     Object(Box<TransactionObject>),
 }
