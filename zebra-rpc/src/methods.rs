@@ -3220,8 +3220,10 @@ where
     ) -> Result<ZListUnifiedReceiversResponse> {
         use zcash_address::unified::Container;
 
-        let (network, unified_address): (
+        // `revision` kept → re-encoded single-receiver addresses stay in the caller's revision
+        let (network, revision, unified_address): (
             zcash_protocol::consensus::NetworkType,
+            zcash_address::unified::Revision,
             zcash_address::unified::Address,
         ) = zcash_address::unified::Encoding::decode(address.clone().as_str())
             .map_err(|error| ErrorObject::owned(0, error.to_string(), None::<()>))?;
@@ -3234,8 +3236,11 @@ where
         for item in unified_address.items() {
             match item {
                 zcash_address::unified::Receiver::Orchard(_data) => {
-                    let addr = zcash_address::unified::Address::try_from_items(vec![item])
-                        .expect("using data already decoded as valid");
+                    let addr = zcash_address::unified::Address::try_from_items(
+                        revision,
+                        vec![zcash_address::unified::Uitem::Data(item)],
+                    )
+                    .expect("using data already decoded as valid");
                     orchard = Some(addr.encode(&network));
                 }
                 zcash_address::unified::Receiver::Sapling(data) => {

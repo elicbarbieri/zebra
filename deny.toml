@@ -177,8 +177,12 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 # List of URLs for allowed Git repositories.
-# Empty: every dependency comes from the crates.io registry.
-allow-git = []
+allow-git = [
+    # lazy point decompression `[patch.crates-io]` (until orchard, sapling-crypto & librustzcash release)
+    "https://github.com/elicbarbieri/orchard.git",
+    "https://github.com/elicbarbieri/sapling-crypto.git",
+    "https://github.com/elicbarbieri/librustzcash.git",
+]
 
 [sources.allow-org]
 github = [

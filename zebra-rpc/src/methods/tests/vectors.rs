@@ -3993,10 +3993,13 @@ async fn rpc_z_listunifiedreceivers_rejects_bad_sapling_receiver() {
     // the decoder, so any 43 bytes work.
     let placeholder_orchard = [0x22u8; 43];
 
-    let unified = UnifiedAddress::try_from_items(vec![
-        Receiver::Sapling(bad_sapling),
-        Receiver::Orchard(placeholder_orchard),
-    ])
+    let unified = UnifiedAddress::try_from_items(
+        zcash_address::unified::Revision::R0,
+        vec![
+            zcash_address::unified::Uitem::Data(Receiver::Sapling(bad_sapling)),
+            zcash_address::unified::Uitem::Data(Receiver::Orchard(placeholder_orchard)),
+        ],
+    )
     .expect("unified container construction does not validate inner bytes");
     let encoded = unified.encode(&NetworkType::Main);
 

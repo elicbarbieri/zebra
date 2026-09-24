@@ -538,10 +538,8 @@ impl From<zcash_protocol::consensus::NetworkUpgrade> for NetworkUpgrade {
             zcash_protocol::consensus::NetworkUpgrade::Nu6_1 => Self::Nu6_1,
             zcash_protocol::consensus::NetworkUpgrade::Nu6_2 => Self::Nu6_2,
             zcash_protocol::consensus::NetworkUpgrade::Nu6_3 => Self::Nu6_3,
-            #[cfg(zcash_unstable = "nu7")]
+            // Unconditional upstream (only `NuTachyon` still cfg-gated, no Zebra counterpart)
             zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu7,
-            #[cfg(zcash_unstable = "zfuture")]
-            zcash_protocol::consensus::NetworkUpgrade::ZFuture => Self::ZFuture,
         }
     }
 }

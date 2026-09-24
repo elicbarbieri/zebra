@@ -382,3 +382,18 @@ unwrap_in_result = "warn"
 
 # TODOs: fix this lint eventually
 result_large_err = "allow"
+
+# Lazy point decompression (parse descriptions without curve arithmetic); drop each once released
+# - orchard = zcash/orchard#562, sapling-crypto = zcash/sapling-crypto#204, librustzcash =
+#   elicbarbieri/librustzcash pr/lazy-point-decompression
+# - Revs = zaino's (one package identity per crate); every type-sharing librustzcash crate patched
+[patch.crates-io]
+orchard = { git = "https://github.com/elicbarbieri/orchard.git", rev = "0dc827e239b1edce01dd8f7053d05a1b03d939aa" }
+sapling-crypto = { git = "https://github.com/elicbarbieri/sapling-crypto.git", rev = "d78bfba7b06902ff26b4f9f17521f28f4441b9aa" }
+zcash_primitives = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
+zcash_proofs = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
+zcash_protocol = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
+zcash_transparent = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
+zcash_address = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
+zcash_keys = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
+equihash = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "4e47ede9d953f64f6483ea207ce924d8b320ad92" }
