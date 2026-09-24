@@ -40,6 +40,18 @@ fn first_tx_of_version(block: &Block, version: u32) -> Option<Vec<u8>> {
         .map(|tx| tx.zcash_serialize_to_vec().expect("valid transaction"))
 }
 
+/// Transaction of `version` with the most Sapling spends + outputs + Orchard actions (curve points)
+fn most_shielded_tx_of_version(block: &Block, version: u32) -> Option<Vec<u8>> {
+    block
+        .transactions
+        .iter()
+        .filter(|tx| tx.version() == version)
+        .max_by_key(|tx| {
+            tx.sapling_spends_count() + tx.sapling_outputs().count() + tx.orchard_actions().count()
+        })
+        .map(|tx| tx.zcash_serialize_to_vec().expect("valid transaction"))
+}
+
 fn bench_transaction_deserialize(c: &mut Criterion) {
     let mut group = c.benchmark_group("Transaction Deserialization");
 
@@ -91,6 +103,35 @@ fn bench_transaction_deserialize(c: &mut Criterion) {
         tx_samples.push(("V5 orchard", bytes));
     }
 
+    // Shielded samples (first tx per version above ≈ no shielded descriptions for V4/V5)
+    for (label, block_bytes, version) in [
+        (
+            "V4 sapling shielded",
+            zebra_test::vectors::BLOCK_MAINNET_419201_BYTES.as_slice(),
+            4,
+        ),
+        (
+            "V5 sapling+orchard shielded",
+            zebra_test::vectors::BLOCK_MAINNET_1687107_BYTES.as_slice(),
+            5,
+        ),
+        (
+            "V5 sapling+orchard shielded 1687118",
+            zebra_test::vectors::BLOCK_MAINNET_1687118_BYTES.as_slice(),
+            5,
+        ),
+        (
+            "V5 testnet shielded 1842421",
+            zebra_test::vectors::BLOCK_TESTNET_1842421_BYTES.as_slice(),
+            5,
+        ),
+    ] {
+        let block = Block::zcash_deserialize(Cursor::new(block_bytes)).expect("valid block");
+        if let Some(bytes) = most_shielded_tx_of_version(&block, version) {
+            tx_samples.push((label, bytes));
+        }
+    }
+
     for (label, tx_bytes) in &tx_samples {
         group.bench_with_input(
             BenchmarkId::new("deserialize", label),
@@ -108,6 +149,21 @@ fn bench_transaction_deserialize(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::new("serialize", label), &tx, |b, tx| {
             b.iter(|| tx.zcash_serialize_to_vec().unwrap())
+        });
+    }
+
+    group.finish();
+
+    let mut group = c.benchmark_group("Transaction Identity");
+
+    for (label, tx_bytes) in &tx_samples {
+        let tx = Transaction::zcash_deserialize(Cursor::new(tx_bytes)).unwrap();
+
+        group.bench_with_input(BenchmarkId::new("hash", label), &tx, |b, tx| {
+            b.iter(|| tx.hash())
+        });
+        group.bench_with_input(BenchmarkId::new("auth_digest", label), &tx, |b, tx| {
+            b.iter(|| tx.auth_digest())
         });
     }
 
