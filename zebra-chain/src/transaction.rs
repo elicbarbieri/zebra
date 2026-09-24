@@ -10,7 +10,6 @@ use zcash_protocol::value::ZatBalance;
 mod auth_digest;
 pub(crate) mod compat;
 mod hash;
-mod joinsplit;
 mod lock_time;
 mod memo;
 mod serialize;
@@ -26,7 +25,6 @@ mod tests;
 pub use auth_digest::AuthDigest;
 pub use compat::{sprout_joinsplit_key_proof_and_ciphertexts, SPROUT_CIPHERTEXT_SIZE};
 pub use hash::{Hash, WtxId};
-pub use joinsplit::JoinSplitData;
 pub use lock_time::LockTime;
 pub use memo::Memo;
 pub use serialize::{
@@ -1592,32 +1590,27 @@ impl Transaction {
         Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
     }
 
-    /// Build a V4 transaction with optional JoinSplit data via byte-level serialization.
+    /// Build a V4 (Canopy) transaction with a Sprout JoinSplit bundle, for tests.
     ///
-    /// Transparent inputs/outputs and sapling shielded data are empty.
-    /// Used by tests that need V4 transactions with sprout data.
-    pub fn test_v4_with_joinsplit_data(
-        joinsplit_data: Option<&JoinSplitData<crate::primitives::Groth16Proof>>,
-    ) -> Self {
-        use crate::serialization::{ZcashDeserialize, ZcashSerialize};
+    /// Transparent and Sapling components are empty.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    pub fn test_v4_with_sprout(sprout_bundle: Option<crate::sprout::JoinSplitData>) -> Self {
+        let tx_data = zp_tx::TransactionData::from_parts(
+            zp_tx::TxVersion::V4,
+            zcash_protocol::consensus::BranchId::Canopy,
+            compat::lock_time_to_u32(&LockTime::min_lock_time_timestamp()),
+            compat::height_to_block_height(block::Height(0)),
+            None,
+            sprout_bundle,
+            None,
+            None,
+        );
 
-        let mut bytes: Vec<u8> = Vec::new();
-        bytes.extend_from_slice(&0x8000_0004u32.to_le_bytes()); // V4 overwintered
-        bytes.extend_from_slice(&0x892F_2085u32.to_le_bytes()); // Sapling versionGroupId
-        bytes.push(0x00); // nTransparentInputs
-        bytes.push(0x00); // nTransparentOutputs
-        bytes.extend_from_slice(&500_000_000u32.to_le_bytes()); // nLockTime
-        bytes.extend_from_slice(&0u32.to_le_bytes()); // nExpiryHeight
-        bytes.extend_from_slice(&0i64.to_le_bytes()); // valueBalanceSapling
-        bytes.push(0x00); // nSpendsSapling
-        bytes.push(0x00); // nOutputsSapling
-        if let Some(jsd) = joinsplit_data {
-            jsd.zcash_serialize(&mut bytes)
-                .expect("joinsplit_data serialization should succeed");
-        } else {
-            bytes.push(0x00); // nJoinSplits
-        }
-        Transaction::zcash_deserialize(bytes.as_slice())
-            .expect("manually constructed V4 transaction should deserialize")
+        Transaction(
+            tx_data
+                .freeze()
+                .expect("built from valid components")
+                .compress(),
+        )
     }
 }

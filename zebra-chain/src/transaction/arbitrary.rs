@@ -12,15 +12,14 @@ pub use shielded::{
 use std::{cmp::max, collections::HashMap, ops::Neg, sync::Arc};
 
 use chrono::{TimeZone, Utc};
-use proptest::{array, collection::vec, option, prelude::*};
+use proptest::{collection::vec, option, prelude::*};
 
 use crate::{
     amount::{self, Amount, NegativeAllowed, NonNegative},
     block::{self, arbitrary::MAX_PARTIAL_CHAIN_BLOCKS},
     parameters::{Network, NetworkUpgrade},
-    primitives::ZkSnarkProof,
     serialization::{self, ZcashDeserializeInto},
-    sprout, transparent,
+    transparent,
     value_balance::{ValueBalance, ValueBalanceError},
     LedgerState,
 };
@@ -28,7 +27,7 @@ use crate::{
 use zcash_primitives::transaction::TxVersion;
 use zcash_transparent;
 
-use super::{JoinSplitData, LockTime, Memo, Transaction, UnminedTx, VerifiedUnminedTx};
+use super::{LockTime, Memo, Transaction, UnminedTx, VerifiedUnminedTx};
 
 /// Returns the librustzcash consensus branch ID selected for the test transaction and its bundles.
 fn branch_id_of(network_upgrade: NetworkUpgrade) -> zcash_protocol::consensus::BranchId {
@@ -573,32 +572,6 @@ impl Arbitrary for LockTime {
             })
         ]
         .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl<P: ZkSnarkProof + Arbitrary + 'static> Arbitrary for JoinSplitData<P> {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (
-            any::<sprout::JoinSplit<P>>(),
-            vec(any::<sprout::JoinSplit<P>>(), 0..MAX_ARBITRARY_ITEMS),
-            array::uniform32(any::<u8>()),
-            vec(any::<u8>(), 64),
-        )
-            .prop_map(|(first, rest, pub_key_bytes, sig_bytes)| Self {
-                first,
-                rest,
-                pub_key: ed25519_zebra::VerificationKeyBytes::from(pub_key_bytes),
-                sig: ed25519_zebra::Signature::from({
-                    let mut b = [0u8; 64];
-                    b.copy_from_slice(sig_bytes.as_slice());
-                    b
-                }),
-            })
-            .boxed()
     }
 
     type Strategy = BoxedStrategy<Self>;
