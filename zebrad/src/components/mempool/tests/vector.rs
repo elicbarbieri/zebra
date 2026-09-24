@@ -17,7 +17,7 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, TransactionExt, VerifiedUnminedTx},
+    transaction::{CompressedTransaction, TransactionExt, TransactionTestExt, VerifiedUnminedTx},
     transparent::{self, OutPoint},
 };
 use zebra_consensus::transaction as tx;
@@ -2190,7 +2190,7 @@ fn op_n(n: u8) -> u8 {
     }
 }
 
-fn set_first_prevout_unlock_script(tx: &mut Transaction, script: transparent::Script) {
+fn set_first_prevout_unlock_script(tx: &mut CompressedTransaction, script: transparent::Script) {
     // Rebuild the transaction with modified inputs.
     let mut inputs = tx.inputs();
     let mut modified = false;

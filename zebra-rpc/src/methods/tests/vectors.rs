@@ -29,7 +29,10 @@ use zebra_chain::{
         NetworkKind,
     },
     serialization::{DateTime32, Duration32, ZcashDeserializeInto, ZcashSerialize},
-    transaction::{zip317, TransactionExt, UnminedTxId, VerifiedUnminedTx},
+    transaction::{
+        zip317, CompressedTransaction, TransactionExt, TransactionTestExt, UnminedTxId,
+        VerifiedUnminedTx,
+    },
     work::difficulty::{CompactDifficulty, ExpandedDifficulty, U256},
 };
 use zebra_consensus::MAX_BLOCK_SIGOPS;
@@ -1440,7 +1443,9 @@ async fn rpc_getrawtransaction() {
         }
     };
 
-    let run_state_test_case = |block_idx: usize, block: Arc<Block>, tx: Arc<Transaction>| {
+    let run_state_test_case = |block_idx: usize,
+                               block: Arc<Block>,
+                               tx: Arc<CompressedTransaction>| {
         let read_state = read_state.clone();
         let txid = tx.hash();
         let hex_txid = txid.encode_hex::<String>();
@@ -2933,7 +2938,7 @@ async fn rpc_nsm_subsidy_and_same_height_templates_follow_parent_reserve() {
             // a cached response without confusing the gross fee with the coinbase payout.
             for fees in [0, 3, 4, 3] {
                 let template = make_template(fees);
-                let coinbase: Transaction = template
+                let coinbase: CompressedTransaction = template
                     .coinbase_txn
                     .data
                     .as_ref()
@@ -2989,7 +2994,7 @@ fn getblocktemplate_mutations_preserve_coinbase_balance() {
     let _init_guard = zebra_test::init();
     let height = NetworkUpgrade::Nu6.activation_height(&Mainnet).unwrap();
     let template = template_extending(&Mainnet, height.previous().unwrap(), Hash([1; 32]));
-    let coinbase: Transaction = template
+    let coinbase: CompressedTransaction = template
         .coinbase_txn
         .data
         .as_ref()
@@ -3147,7 +3152,7 @@ async fn gbt_with(net: Network, addr: ZcashAddress) {
     };
 
     let coinbase_addr = ZcashAddress::from(
-        Transaction::zcash_deserialize(get_block_template.coinbase_txn.data.as_ref())
+        CompressedTransaction::zcash_deserialize(get_block_template.coinbase_txn.data.as_ref())
             .expect("coinbase transaction data should be deserializable")
             .outputs()
             .first()
@@ -3287,7 +3292,7 @@ async fn gbt_with(net: Network, addr: ZcashAddress) {
 
     // Try getting mempool transactions with a different tip hash
 
-    let tx = Arc::new(Transaction::test_v1(
+    let tx = Arc::new(CompressedTransaction::test_v1(
         vec![],
         vec![],
         transaction::LockTime::unlocked(),
@@ -3673,7 +3678,7 @@ async fn getblocktemplate_long_poll_waits_for_a_new_template() {
     // different long poll ID than the cached template's. That disagreement is what a fall-through
     // turns into an immediate answer, and it is the whole point of this test: with an empty
     // mempool both sources agree and nothing is exercised.
-    let tx = Arc::new(Transaction::test_v1(
+    let tx = Arc::new(CompressedTransaction::test_v1(
         vec![],
         vec![],
         transaction::LockTime::unlocked(),
@@ -4962,7 +4967,7 @@ async fn rpc_gettxout() {
     // TODO: Create a mempool test
 
     // Build a state test for all transactions
-    let run_test_case = |_block_idx: usize, _block: Arc<Block>, tx: Arc<Transaction>| {
+    let run_test_case = |_block_idx: usize, _block: Arc<Block>, tx: Arc<CompressedTransaction>| {
         let read_state = read_state.clone();
         let txid = tx.hash();
         let hex_txid = txid.encode_hex::<String>();

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::{
     block::{serialize::MAX_BLOCK_BYTES, Block, Header},
     serialization::{ZcashDeserialize, ZcashSerialize},
-    transaction::{LockTime, Transaction},
+    transaction::{CompressedTransaction, LockTime, TransactionTestExt},
     transparent,
 };
 
@@ -32,11 +32,12 @@ pub fn block_header() -> (Header, Vec<u8>) {
 }
 
 /// Returns a generated transparent transaction, and its canonical serialized bytes.
-pub fn transaction() -> (Transaction, Vec<u8>) {
+pub fn transaction() -> (CompressedTransaction, Vec<u8>) {
     // Some of the test vectors are in a non-canonical format,
     // so we have to round-trip serialize them.
 
-    let transaction = Transaction::zcash_deserialize(&zebra_test::vectors::DUMMY_TX1[..]).unwrap();
+    let transaction =
+        CompressedTransaction::zcash_deserialize(&zebra_test::vectors::DUMMY_TX1[..]).unwrap();
     let transaction_bytes = transaction.zcash_serialize_to_vec().unwrap();
 
     (transaction, transaction_bytes)
@@ -198,7 +199,7 @@ fn single_transaction_block_many_inputs(oversized: bool) -> Block {
     outputs.push(output);
 
     // Create a big transaction
-    let big_transaction = Transaction::test_v1(inputs, outputs, lock_time);
+    let big_transaction = CompressedTransaction::test_v1(inputs, outputs, lock_time);
 
     // Put the big transaction into a block
     let transactions = vec![Arc::new(big_transaction)];
@@ -264,7 +265,7 @@ fn single_transaction_block_many_outputs(oversized: bool) -> Block {
     let outputs = std::iter::repeat_n(output, max_outputs_in_tx).collect::<Vec<_>>();
 
     // Create a big transaction
-    let big_transaction = Transaction::test_v1(inputs, outputs, lock_time);
+    let big_transaction = CompressedTransaction::test_v1(inputs, outputs, lock_time);
 
     // Put the big transaction into a block
     let transactions = vec![Arc::new(big_transaction)];

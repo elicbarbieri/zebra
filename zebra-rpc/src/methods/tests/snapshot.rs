@@ -36,7 +36,7 @@ use zebra_chain::{
     },
     serialization::{DateTime32, ZcashDeserializeInto},
     subtree::NoteCommitmentSubtreeData,
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
     work::difficulty::CompactDifficulty,
 };
 use zebra_consensus::Request;
@@ -882,7 +882,7 @@ fn snapshot_rpc_getblockhash_invalid(
 fn snapshot_rpc_getblocktemplate(
     variant: &'static str,
     block_template: GetBlockTemplateResponse,
-    coinbase_tx: Option<Transaction>,
+    coinbase_tx: Option<CompressedTransaction>,
     settings: &insta::Settings,
 ) {
     settings.bind(|| {
@@ -890,6 +890,7 @@ fn snapshot_rpc_getblocktemplate(
     });
 
     if let Some(coinbase_tx) = coinbase_tx {
+        let coinbase_tx = zebra_chain::transaction::SerdeTransaction(&coinbase_tx);
         settings.bind(|| {
             insta::assert_ron_snapshot!(
                 format!("get_block_template_{variant}.coinbase_tx"),
@@ -1311,7 +1312,7 @@ pub async fn test_mining_rpcs<State, ReadState>(
         )
     };
 
-    let coinbase_tx: Transaction = get_block_template
+    let coinbase_tx: CompressedTransaction = get_block_template
         .coinbase_txn
         .data
         .as_ref()
@@ -1358,7 +1359,7 @@ pub async fn test_mining_rpcs<State, ReadState>(
         )
     };
 
-    let coinbase_tx: Transaction = get_block_template
+    let coinbase_tx: CompressedTransaction = get_block_template
         .coinbase_txn
         .data
         .as_ref()

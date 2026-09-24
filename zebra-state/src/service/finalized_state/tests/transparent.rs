@@ -20,7 +20,7 @@ use zebra_chain::{
     block::{self, Block, Height},
     parameters::{Network, NetworkKind},
     serialization::ZcashDeserializeInto,
-    transaction::{self, LockTime, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, LockTime, TransactionExt, TransactionTestExt},
     transparent::{
         self, new_ordered_outputs_with_height, Address, Input, OutPoint, Output, Script,
     },
@@ -83,7 +83,7 @@ fn intra_block_self_spend_chain_in_finalized_state() {
         hash: transaction::Hash([0x00; 32]),
         index: 0,
     };
-    let t0 = Arc::new(Transaction::test_v1(
+    let t0 = Arc::new(CompressedTransaction::test_v1(
         vec![Input::PrevOut {
             outpoint: existing_outpoint,
             unlock_script: Script::new(&[]),
@@ -99,7 +99,7 @@ fn intra_block_self_spend_chain_in_finalized_state() {
         hash: t0_hash,
         index: 0,
     };
-    let t1 = Arc::new(Transaction::test_v1(
+    let t1 = Arc::new(CompressedTransaction::test_v1(
         vec![Input::PrevOut {
             outpoint: t0_output_outpoint,
             unlock_script: Script::new(&[]),

@@ -15,7 +15,9 @@ use zebra_chain::{
     block::{self, Height},
     parameters::Network,
     serialization::ZcashDeserializeInto,
-    transaction::{AuthDigest, Hash as TxHash, Transaction, UnminedTx, UnminedTxId, WtxId},
+    transaction::{
+        AuthDigest, CompressedTransaction, Hash as TxHash, UnminedTx, UnminedTxId, WtxId,
+    },
 };
 use zebra_consensus::{error::TransactionError, router::RouterError, transaction};
 use zebra_network::{
@@ -339,7 +341,7 @@ async fn inbound_tx_empty_state_notfound() -> Result<(), crate::BoxError> {
 #[tokio::test(flavor = "multi_thread")]
 async fn outbound_tx_unrelated_response_notfound() -> Result<(), crate::BoxError> {
     // We respond with an unrelated transaction, so the peer gives up on the request.
-    let unrelated_response: Transaction =
+    let unrelated_response: CompressedTransaction =
         zebra_test::vectors::DUMMY_TX1.zcash_deserialize_into()?;
     let unrelated_response = Response::Transactions(vec![Available((
         std::sync::Arc::new(unrelated_response).into(),
@@ -488,7 +490,8 @@ async fn outbound_tx_unrelated_response_notfound() -> Result<(), crate::BoxError
 #[tokio::test(flavor = "multi_thread")]
 async fn outbound_tx_partial_response_notfound() -> Result<(), crate::BoxError> {
     // We repeatedly respond with the same transaction, so the peer gives up on the second response.
-    let repeated_tx: Transaction = zebra_test::vectors::DUMMY_TX1.zcash_deserialize_into()?;
+    let repeated_tx: CompressedTransaction =
+        zebra_test::vectors::DUMMY_TX1.zcash_deserialize_into()?;
     let repeated_tx: UnminedTx = std::sync::Arc::new(repeated_tx).into();
     let repeated_response = Response::Transactions(vec![
         Available((repeated_tx.clone(), None)),

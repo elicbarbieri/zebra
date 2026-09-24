@@ -1,6 +1,6 @@
 //! Builders for shielded bundles on the `zcash_primitives` transaction types.
 //!
-//! Zebra's [`Transaction`](crate::transaction::Transaction) wraps
+//! Zebra's [`CompressedTransaction`](crate::transaction::CompressedTransaction) wraps
 //! `zcash_primitives::transaction::Transaction`, whose bundles are owned by the upstream crates
 //! and cannot be mutated in place. Tests therefore cannot reach in and edit shielded data the way
 //! they could when `Transaction` was an enum of Zebra-owned structs.
@@ -31,7 +31,7 @@ use orchard::{
 };
 use zcash_protocol::value::ZatBalance;
 
-use crate::transaction::TransactionExt;
+use crate::transaction::{TransactionExt, TransactionTestExt};
 
 /// Derives a canonically-encoded `pallas::Base` from a `seed`.
 ///
@@ -322,8 +322,8 @@ pub fn fake_v6_transaction(
     network_upgrade: crate::parameters::NetworkUpgrade,
     orchard_bundle: Option<Bundle<Authorized, ZatBalance>>,
     ironwood_bundle: Option<Bundle<Authorized, ZatBalance>>,
-) -> crate::transaction::Transaction {
-    crate::transaction::Transaction::test_v6_with_bundles(
+) -> crate::transaction::CompressedTransaction {
+    crate::transaction::CompressedTransaction::test_v6_with_bundles(
         network_upgrade,
         Vec::new(),
         Vec::new(),
@@ -336,7 +336,7 @@ pub fn fake_v6_transaction(
 
 /// `tx`'s Orchard bundle on the point tier (panics without one)
 fn decompressed_orchard_bundle(
-    tx: &crate::transaction::Transaction,
+    tx: &crate::transaction::CompressedTransaction,
 ) -> Bundle<::orchard::bundle::Authorized, ZatBalance> {
     tx.orchard_bundle()
         .expect("the transaction must have an Orchard bundle")
@@ -350,9 +350,9 @@ fn decompressed_orchard_bundle(
 /// The bundle is owned by `zcash_primitives` and cannot be mutated in place, so this rebuilds
 /// the transaction. Panics if `tx` has no Orchard bundle.
 pub fn with_orchard_value_balance(
-    tx: crate::transaction::Transaction,
+    tx: crate::transaction::CompressedTransaction,
     value_balance: i64,
-) -> crate::transaction::Transaction {
+) -> crate::transaction::CompressedTransaction {
     let balance = ZatBalance::from_i64(value_balance).expect("a valid signed amount");
 
     let bundle = decompressed_orchard_bundle(&tx)
@@ -367,8 +367,8 @@ pub fn with_orchard_value_balance(
 /// The bundle has no flags set and a zero value balance, for structural consensus-rule tests
 /// that only care that *an* Orchard bundle is present.
 pub fn insert_fake_orchard_shielded_data(
-    tx: crate::transaction::Transaction,
-) -> crate::transaction::Transaction {
+    tx: crate::transaction::CompressedTransaction,
+) -> crate::transaction::CompressedTransaction {
     let branch_id = tx.consensus_branch_id();
     let bundle = fake_bundle_for_branch(branch_id, ::orchard::ValuePool::Orchard, 1, 0xF00D)
         .expect("the Orchard pool is defined for this transaction's branch");
@@ -381,9 +381,9 @@ pub fn insert_fake_orchard_shielded_data(
 /// Panics if `tx` has no Orchard bundle, or if `flags` are not representable under the bundle's
 /// version.
 pub fn with_orchard_flags(
-    tx: crate::transaction::Transaction,
+    tx: crate::transaction::CompressedTransaction,
     flags: Flags,
-) -> crate::transaction::Transaction {
+) -> crate::transaction::CompressedTransaction {
     let bundle = decompressed_orchard_bundle(&tx);
 
     let rebuilt = Bundle::try_from_parts(
@@ -409,8 +409,8 @@ pub fn with_orchard_flags(
 /// The bundle version must not enforce a canonical proof size (i.e. pre-NU6.2 Orchard), since the
 /// point is to install a proof that is not a real one.
 pub fn with_garbage_orchard_authorization(
-    tx: crate::transaction::Transaction,
-) -> crate::transaction::Transaction {
+    tx: crate::transaction::CompressedTransaction,
+) -> crate::transaction::CompressedTransaction {
     let bundle = decompressed_orchard_bundle(&tx);
 
     // Rebuild every action with a garbage spend authorization signature, preserving its effects.
@@ -459,7 +459,7 @@ mod tests {
     use crate::{
         parameters::NetworkUpgrade,
         serialization::{ZcashDeserializeInto, ZcashSerialize},
-        transaction::Transaction,
+        transaction::CompressedTransaction,
     };
 
     /// The bundles this module builds must survive a wire-format round trip, otherwise the tests
@@ -486,7 +486,7 @@ mod tests {
         let bytes = tx
             .zcash_serialize_to_vec()
             .expect("a v6 transaction with fake bundles serializes");
-        let tx2: Transaction = bytes
+        let tx2: CompressedTransaction = bytes
             .zcash_deserialize_into()
             .expect("a v6 transaction with fake bundles deserializes");
 

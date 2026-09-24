@@ -11,7 +11,7 @@ use zebra_chain::{
         subsidy::{self, CoinbaseTransactionError},
         Network, NetworkUpgrade,
     },
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     work::{
         difficulty::{ExpandedDifficulty, ParameterDifficulty as _},
         equihash,
@@ -29,7 +29,9 @@ use crate::{block::ShieldedActionCounts, error::*};
 /// > transaction as the first transaction in the block.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#coinbasetransactions>
-pub fn coinbase_is_first(block: &Block) -> Result<Arc<transaction::Transaction>, BlockError> {
+pub fn coinbase_is_first(
+    block: &Block,
+) -> Result<Arc<transaction::CompressedTransaction>, BlockError> {
     // # Consensus
     //
     // > A block MUST have at least one transaction
@@ -158,7 +160,7 @@ pub fn subsidy_is_valid(
 ///
 /// See [`zebra_chain::parameters::subsidy::miner_fees_are_valid`].
 pub fn miner_fees_are_valid(
-    coinbase_tx: &Transaction,
+    coinbase_tx: &CompressedTransaction,
     height: Height,
     block_miner_fees: Amount<NonNegative>,
     expected_block_subsidy: Amount<NonNegative>,
@@ -311,7 +313,7 @@ pub fn shielded_action_limits_are_valid(
     let counts = block
         .transactions
         .iter()
-        .map(|transaction| ShieldedActionCounts::from_transaction(transaction))
+        .map(|transaction| ShieldedActionCounts::from_transaction(transaction.as_ref()))
         .fold(ShieldedActionCounts::default(), |acc, counts| {
             acc.saturating_add(counts)
         });

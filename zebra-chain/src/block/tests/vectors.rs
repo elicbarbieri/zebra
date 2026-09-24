@@ -16,7 +16,7 @@ use crate::{
     serialization::{
         sha256d, SerializationError, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize,
     },
-    transaction::{LockTime, Transaction, TransactionExt},
+    transaction::{CompressedTransaction, LockTime, TransactionExt, TransactionTestExt},
     transparent,
     value_balance::ValueBalance,
 };
@@ -81,7 +81,7 @@ fn chain_value_pool_change_propagates_transaction_value_balance_errors() {
     let max_money: Amount<NonNegative> = MAX_MONEY.try_into().expect("MAX_MONEY is a valid amount");
     // Two `MAX_MONEY` transparent outputs make the transaction-level output
     // sum exceed `MAX_MONEY`, so `value_balance` returns `Err`.
-    let coinbase = Transaction::test_v1(
+    let coinbase = CompressedTransaction::test_v1(
         vec![transparent::Input::Coinbase {
             height: Height(1),
             // 1 byte of data keeps the scriptSig at the 2-byte consensus minimum.
@@ -194,7 +194,7 @@ fn chain_value_pool_change_accrues_the_nsm_reserve() {
     let change: Amount<NonNegative> = 90_000.try_into().expect("valid amount");
     // The one non-coinbase transaction below pays a fee of 10,000 zatoshi.
 
-    let coinbase = Transaction::test_v1(
+    let coinbase = CompressedTransaction::test_v1(
         vec![transparent::Input::Coinbase {
             height,
             data: vec![0],
@@ -208,7 +208,7 @@ fn chain_value_pool_change_accrues_the_nsm_reserve() {
     );
 
     let outpoint = OutPoint::from_usize(TransactionHash([0; 32]), 0);
-    let spend = Transaction::test_v1(
+    let spend = CompressedTransaction::test_v1(
         vec![transparent::Input::PrevOut {
             outpoint,
             unlock_script: transparent::Script::new(&[]),
@@ -316,7 +316,7 @@ fn nsm_seed_reissuance_and_funding_follow_the_parent() -> Result<(), Box<dyn std
     let header: Header = zebra_test::vectors::DUMMY_HEADER.zcash_deserialize_into()?;
     let make_block = |height, outputs| Block {
         header: Arc::new(header),
-        transactions: vec![Arc::new(Transaction::test_v1(
+        transactions: vec![Arc::new(CompressedTransaction::test_v1(
             vec![transparent::Input::Coinbase {
                 height,
                 data: vec![0],
@@ -883,7 +883,7 @@ fn transaction_fees_sum_the_non_coinbase_transactions() {
         lock_script: transparent::Script::new(&[]),
     };
 
-    let coinbase = Transaction::test_v4(
+    let coinbase = CompressedTransaction::test_v4(
         vec![transparent::Input::Coinbase {
             height,
             data: vec![0],
@@ -905,7 +905,7 @@ fn transaction_fees_sum_the_non_coinbase_transactions() {
             outpoint,
             transparent::Utxo::new(output(10_000), Height(1), false),
         );
-        transactions.push(Arc::new(Transaction::test_v4(
+        transactions.push(Arc::new(CompressedTransaction::test_v4(
             vec![transparent::Input::PrevOut {
                 outpoint,
                 unlock_script: transparent::Script::new(&[]),

@@ -4,21 +4,21 @@
 use crate::{
     block::Height,
     parameters::{Network, NetworkUpgrade},
-    transaction::Transaction,
+    transaction::CompressedTransaction,
 };
 
 /// Returns true if all Sapling, Orchard, or Ironwood outputs, if any, decrypt successfully
 /// with an all-zeroes outgoing viewing key.
 ///
-/// - `Err` = point rules broken ([`Transaction::decompress`]), kept apart from undecryptable
+/// - `Err` = point rules broken ([`CompressedTransaction::decompress`]), kept apart from undecryptable
 pub fn decrypts_successfully(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     network: &Network,
     height: Height,
 ) -> Result<bool, zcash_primitives::transaction::DecompressionError> {
     let nu = NetworkUpgrade::current(network, height);
 
-    let tx = tx.decompress()?;
+    let tx = tx.clone().decompress()?;
 
     let null_sapling_ovk = sapling_crypto::keys::OutgoingViewingKey([0u8; 32]);
 

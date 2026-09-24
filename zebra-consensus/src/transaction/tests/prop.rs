@@ -14,7 +14,7 @@ use zebra_chain::{
         arbitrary::{datetime_full, datetime_u32},
         DateTime32,
     },
-    transaction::{LockTime, Transaction, TransactionExt, UnminedTx},
+    transaction::{CompressedTransaction, LockTime, TransactionExt, TransactionTestExt, UnminedTx},
     transparent,
 };
 use zebra_state as zs;
@@ -403,7 +403,7 @@ fn mock_transparent_transaction(
     transaction_version: u8,
     lock_time: LockTime,
 ) -> (
-    Transaction,
+    CompressedTransaction,
     HashMap<transparent::OutPoint, transparent::OrderedUtxo>,
 ) {
     let (transaction_version, network_upgrade) =
@@ -417,8 +417,14 @@ fn mock_transparent_transaction(
     let expiry_height = block_height;
 
     let transaction = match transaction_version {
-        4 => Transaction::test_v4(inputs, outputs, lock_time, expiry_height),
-        5 => Transaction::test_v5(network_upgrade, inputs, outputs, lock_time, expiry_height),
+        4 => CompressedTransaction::test_v4(inputs, outputs, lock_time, expiry_height),
+        5 => CompressedTransaction::test_v5(
+            network_upgrade,
+            inputs,
+            outputs,
+            lock_time,
+            expiry_height,
+        ),
         invalid_version => unreachable!("invalid transaction version: {}", invalid_version),
     };
 
@@ -559,7 +565,7 @@ fn mock_funded_transparent_transaction(
     transaction_version: u8,
     lock_time: LockTime,
 ) -> (
-    Transaction,
+    CompressedTransaction,
     HashMap<transparent::OutPoint, transparent::OrderedUtxo>,
 ) {
     let (transaction_version, network_upgrade) =
@@ -593,9 +599,21 @@ fn mock_funded_transparent_transaction(
     let expiry_height = block_height;
 
     let transaction = match transaction_version {
-        4 => Transaction::test_v4(inputs, outputs, lock_time, expiry_height),
-        5 => Transaction::test_v5(network_upgrade, inputs, outputs, lock_time, expiry_height),
-        6 => Transaction::test_v6(network_upgrade, inputs, outputs, lock_time, expiry_height),
+        4 => CompressedTransaction::test_v4(inputs, outputs, lock_time, expiry_height),
+        5 => CompressedTransaction::test_v5(
+            network_upgrade,
+            inputs,
+            outputs,
+            lock_time,
+            expiry_height,
+        ),
+        6 => CompressedTransaction::test_v6(
+            network_upgrade,
+            inputs,
+            outputs,
+            lock_time,
+            expiry_height,
+        ),
         invalid_version => unreachable!("invalid transaction version: {}", invalid_version),
     };
 
@@ -658,7 +676,7 @@ fn mock_state_service(
 ///
 /// The verifier is given no mempool handle, so every spent output must be in `known_utxos`.
 fn validate_mempool(
-    transaction: Transaction,
+    transaction: CompressedTransaction,
     height: block::Height,
     next_median_time_past: DateTime<Utc>,
     known_utxos: HashMap<transparent::OutPoint, transparent::OrderedUtxo>,
@@ -692,7 +710,7 @@ fn validate_mempool(
 /// resolves every spent output through the same mock state as [`validate_mempool`]. This
 /// keeps the two verification paths comparable.
 fn validate_with_state(
-    transaction: Transaction,
+    transaction: CompressedTransaction,
     height: block::Height,
     block_time: DateTime<Utc>,
     next_median_time_past: DateTime<Utc>,
@@ -729,7 +747,7 @@ fn validate_with_state(
 /// Configures an asynchronous runtime to run the verifier, sets it up and then uses it verify a
 /// `transaction` using the provided parameters.
 fn validate(
-    transaction: Transaction,
+    transaction: CompressedTransaction,
     height: block::Height,
     block_time: DateTime<Utc>,
     known_utxos: HashMap<transparent::OutPoint, transparent::OrderedUtxo>,

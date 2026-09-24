@@ -14,7 +14,7 @@ use zcash_primitives::transaction::components::sprout::JsDescription;
 use zebra_chain::{
     block::Block,
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, TransactionExt, TxVersion},
+    transaction::{CompressedTransaction, TransactionExt, TxVersion},
 };
 
 use crate::primitives::groth16::*;
@@ -62,7 +62,7 @@ fn joinsplit_from_parts(
 
 async fn verify_groth16_joinsplits<V>(
     verifier: &mut V,
-    transactions: Vec<std::sync::Arc<Transaction>>,
+    transactions: Vec<std::sync::Arc<CompressedTransaction>>,
 ) -> Result<(), V::Error>
 where
     V: tower::Service<Item, Response = ()>,
@@ -233,7 +233,7 @@ async fn verify_sprout_groth16_vector() {
 
 async fn verify_invalid_groth16_joinsplit_description<V>(
     verifier: &mut V,
-    transactions: Vec<std::sync::Arc<Transaction>>,
+    transactions: Vec<std::sync::Arc<CompressedTransaction>>,
 ) -> Result<(), V::Error>
 where
     V: tower::Service<Item, Response = ()>,

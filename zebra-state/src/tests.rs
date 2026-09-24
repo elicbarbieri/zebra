@@ -6,10 +6,9 @@ use std::{mem, sync::Arc};
 
 use zebra_chain::{
     block::Block,
-    transaction::TransactionExt,
+    transaction::{TransactionExt, TransactionTestExt},
     transparent,
-    work::difficulty::ExpandedDifficulty,
-    work::difficulty::{Work, U256},
+    work::difficulty::{ExpandedDifficulty, Work, U256},
 };
 
 pub mod setup;

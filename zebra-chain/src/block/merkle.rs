@@ -6,7 +6,9 @@ use hex::{FromHex, ToHex};
 
 use crate::{
     serialization::{sha256d, BytesInDisplayOrder},
-    transaction::{self, Transaction, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx},
+    transaction::{
+        self, CompressedTransaction, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx,
+    },
 };
 
 #[cfg(any(test, feature = "proptest-impl"))]
@@ -157,7 +159,7 @@ fn auth_data_hash(h1: &[u8; 32], h2: &[u8; 32]) -> [u8; 32] {
 
 impl<T> std::iter::FromIterator<T> for Root
 where
-    T: std::convert::AsRef<Transaction>,
+    T: std::convert::AsRef<CompressedTransaction>,
 {
     fn from_iter<I>(transactions: I) -> Self
     where
@@ -312,7 +314,7 @@ pub const AUTH_DIGEST_PLACEHOLDER: transaction::AuthDigest = transaction::AuthDi
 
 impl<T> std::iter::FromIterator<T> for AuthDataRoot
 where
-    T: std::convert::AsRef<Transaction>,
+    T: std::convert::AsRef<CompressedTransaction>,
 {
     fn from_iter<I>(transactions: I) -> Self
     where

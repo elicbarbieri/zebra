@@ -23,7 +23,7 @@ use zebra_chain::{
     block::{Block, Height},
     parameters::{Network, NetworkUpgrade},
     serialization::ZcashDeserializeInto,
-    transaction::{HashType, Transaction, TransactionExt, TxVersion},
+    transaction::{CompressedTransaction, HashType, TransactionExt, TxVersion},
     transparent,
 };
 
@@ -46,7 +46,7 @@ const TEST_CACHE_VERIFIER_LABEL: &str = "groth16_sapling_test";
 /// The upgrade matters for the tests that actually verify: a V4 sighash commits to the consensus
 /// branch id, so a real bundle only verifies under the upgrade its block was mined in. The
 /// cache-key tests do not need a valid sighash and pass an upgrade of their own.
-fn mined_sapling_transactions() -> Vec<(NetworkUpgrade, Transaction)> {
+fn mined_sapling_transactions() -> Vec<(NetworkUpgrade, CompressedTransaction)> {
     let mut transactions = Vec::new();
 
     for (height, bytes) in zebra_test::vectors::MAINNET_BLOCKS.iter() {
@@ -76,7 +76,7 @@ fn mined_sapling_transactions() -> Vec<(NetworkUpgrade, Transaction)> {
 }
 
 /// Returns the mainnet test transactions that carry a Sapling bundle.
-fn sapling_transactions() -> Vec<Transaction> {
+fn sapling_transactions() -> Vec<CompressedTransaction> {
     mined_sapling_transactions()
         .into_iter()
         .map(|(_, tx)| tx)
@@ -84,7 +84,7 @@ fn sapling_transactions() -> Vec<Transaction> {
 }
 
 /// Returns one real mainnet Sapling transaction.
-fn sapling_transaction() -> Transaction {
+fn sapling_transaction() -> CompressedTransaction {
     sapling_transactions()
         .into_iter()
         .next()
@@ -92,7 +92,7 @@ fn sapling_transaction() -> Transaction {
 }
 
 /// Returns one real mainnet V4 Sapling transaction, with the network upgrade it was mined under.
-fn mined_v4_sapling_transaction() -> (NetworkUpgrade, Transaction) {
+fn mined_v4_sapling_transaction() -> (NetworkUpgrade, CompressedTransaction) {
     mined_sapling_transactions()
         .into_iter()
         .find(|(_, tx)| tx.tx_version() == TxVersion::V4)
@@ -100,7 +100,7 @@ fn mined_v4_sapling_transaction() -> (NetworkUpgrade, Transaction) {
 }
 
 /// Returns the verification item for `tx`'s Sapling bundle under `nu`, if it has one.
-fn item(tx: &Transaction, nu: NetworkUpgrade) -> Option<Item> {
+fn item(tx: &CompressedTransaction, nu: NetworkUpgrade) -> Option<Item> {
     let all_previous_outputs: Arc<Vec<transparent::Output>> = Arc::new(Vec::new());
     let sighasher = tx.sighasher(nu, all_previous_outputs).ok()?;
     let bundle = sighasher.sapling_bundle()?;
@@ -113,7 +113,7 @@ fn item(tx: &Transaction, nu: NetworkUpgrade) -> Option<Item> {
 }
 
 /// Returns the cache key of `tx`'s Sapling bundle under `nu`.
-fn cache_key(tx: &Transaction, nu: NetworkUpgrade) -> CacheKey {
+fn cache_key(tx: &CompressedTransaction, nu: NetworkUpgrade) -> CacheKey {
     item(tx, nu)
         .expect("the transaction was selected for having a Sapling bundle")
         .cache_key()

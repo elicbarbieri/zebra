@@ -178,7 +178,7 @@ fn nu7_branch_id_and_transaction_formats() {
 
     use crate::{
         serialization::{ZcashDeserializeInto, ZcashSerialize},
-        transaction::{HashType, Transaction, TransactionExt},
+        transaction::{CompressedTransaction, HashType, TransactionExt},
     };
     use zcash_protocol::consensus::BranchId;
 
@@ -216,7 +216,7 @@ fn nu7_branch_id_and_transaction_formats() {
     ] {
         let bytes = hex::decode(encoded).unwrap();
         let expected_digest = <[u8; 32]>::from_hex(digest).unwrap();
-        let transaction: Transaction = bytes.as_slice().zcash_deserialize_into().unwrap();
+        let transaction: CompressedTransaction = bytes.as_slice().zcash_deserialize_into().unwrap();
         assert_eq!(transaction.version(), version);
         assert_eq!(transaction.network_upgrade(), Some(Nu7));
         assert_eq!(transaction.zcash_serialize_to_vec().unwrap(), bytes);

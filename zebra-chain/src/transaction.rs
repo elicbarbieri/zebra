@@ -1,4 +1,13 @@
 //! Transactions and transaction-related structures.
+//!
+//! # Tiers
+//!
+//! - [`CompressedTransaction`]: as parsed (points left encoded); stored, read, checkpoint-verified
+//! - `zcash_primitives::transaction::Transaction`: decompressed, point rules checked; verified
+//!   and relayed
+//! - Point rules (`CompressedTransaction::decompress`, same checks the eager parse ran):
+//!   Sapling `cv` canonical & not small order, spend `rk` canonical; Orchard/Ironwood `cv_net`
+//!   & `rk` canonical, `rk` != identity, `epk` canonical & != identity
 
 use std::fmt;
 
@@ -47,57 +56,7 @@ use crate::{
     Error,
 };
 
-/// A Zcash transaction, wrapping `zcash_primitives::transaction::CompressedTransaction`.
-///
-/// - Sapling/Orchard/Ironwood points stay compressed, unchecked until [`Transaction::decompress`]
-#[derive(Debug)]
-pub struct Transaction(pub(crate) zp_tx::CompressedTransaction);
-
-impl std::ops::Deref for Transaction {
-    type Target = zp_tx::CompressedTransactionData;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Transaction {
-    /// Point rules deferred from parse, the only place they are checked
-    ///
-    /// - Sapling: `cv` canonical & not small order, spend `rk` canonical
-    /// - Orchard/Ironwood: `cv_net` & `rk` canonical, `rk` != identity, `epk` canonical & != identity
-    /// - Same rules, same upstream checks as the eager parse (moved, not changed)
-    /// - First failure returned (Sapling → Orchard → Ironwood, description order)
-    /// - Result = upstream type whose constructors enforce these rules (holding one = checked)
-    pub fn decompress(&self) -> Result<zp_tx::Transaction, zp_tx::DecompressionError> {
-        self.0.clone().decompress()
-    }
-
-    /// Compute the sighash for this transaction.
-    ///
-    /// Returns an error if `network_upgrade` doesn't match the transaction's consensus branch ID.
-    pub fn sighash(
-        &self,
-        network_upgrade: NetworkUpgrade,
-        hash_type: sighash::HashType,
-        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
-        input_index_script_code: Option<(usize, Vec<u8>)>,
-    ) -> Result<sighash::SigHash, Error> {
-        let hasher = sighash::SigHasher::new(self, network_upgrade, all_previous_outputs)?;
-        Ok(hasher.sighash(hash_type, input_index_script_code))
-    }
-
-    /// Returns a [`SigHasher`] for this transaction.
-    ///
-    /// Returns an error if `network_upgrade` doesn't match the transaction's consensus branch ID.
-    pub fn sighasher(
-        &self,
-        network_upgrade: NetworkUpgrade,
-        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
-    ) -> Result<sighash::SigHasher, Error> {
-        sighash::SigHasher::new(self, network_upgrade, all_previous_outputs)
-    }
-}
+pub use zp_tx::CompressedTransaction;
 
 /// Sapling spend of a [`TransactionExt`] tier
 pub type SaplingSpend<T> = <<T as TransactionExt>::Sapling as SaplingBundleEncoding<
@@ -119,7 +78,7 @@ pub type OrchardAction<T> = <<T as TransactionExt>::Orchard as OrchardBundleEnco
 
 /// Zebra's transaction helpers, written once for both upstream tiers
 ///
-/// - [`Transaction`] = compressed (stored, read, checkpoint-verified)
+/// - [`CompressedTransaction`] = compressed (stored, read, checkpoint-verified)
 /// - `zcash_primitives::transaction::Transaction` = decompressed (point rules checked)
 pub trait TransactionExt {
     /// Sapling bundle of this tier
@@ -161,6 +120,29 @@ pub trait TransactionExt {
 
     /// ZIP 244 authorizing-data commitment
     fn auth_commitment(&self) -> blake2b_simd::Hash;
+
+    /// Returns a [`SigHasher`] for this transaction (decompressing first, for the compressed tier).
+    ///
+    /// Returns an error if `network_upgrade` doesn't match the transaction's consensus branch ID.
+    fn sighasher(
+        &self,
+        network_upgrade: NetworkUpgrade,
+        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
+    ) -> Result<sighash::SigHasher, Error>;
+
+    /// Compute the sighash for this transaction.
+    ///
+    /// Returns an error if `network_upgrade` doesn't match the transaction's consensus branch ID.
+    fn sighash(
+        &self,
+        network_upgrade: NetworkUpgrade,
+        hash_type: sighash::HashType,
+        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
+        input_index_script_code: Option<(usize, Vec<u8>)>,
+    ) -> Result<sighash::SigHash, Error> {
+        let hasher = self.sighasher(network_upgrade, all_previous_outputs)?;
+        Ok(hasher.sighash(hash_type, input_index_script_code))
+    }
 
     /// Returns the numeric version of this transaction.
     #[allow(unreachable_patterns)]
@@ -296,7 +278,7 @@ pub trait TransactionExt {
     ///
     /// <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
     ///
-    /// Note that a transaction can return `false` from both [`Transaction::is_coinbase`] and
+    /// Note that a transaction can return `false` from both [`TransactionExt::is_coinbase`] and
     /// this method, for example a transaction with a null-prevout input alongside other
     /// inputs. Such transactions are rejected by the verifier.
     fn is_valid_non_coinbase(&self) -> bool {
@@ -785,55 +767,63 @@ pub trait TransactionExt {
     }
 }
 
-impl TransactionExt for Transaction {
+impl TransactionExt for CompressedTransaction {
     type Sapling =
         sapling_crypto::bundle::BundleBytes<sapling_crypto::bundle::Authorized, ZatBalance>;
     type Orchard = ::orchard::BundleBytes<::orchard::bundle::Authorized, ZatBalance>;
 
     fn tx_version(&self) -> TxVersion {
-        self.0.version()
+        zp_tx::CompressedTransactionData::version(self)
     }
 
     fn consensus_branch_id(&self) -> zcash_protocol::consensus::BranchId {
-        self.0.consensus_branch_id()
+        zp_tx::CompressedTransactionData::consensus_branch_id(self)
     }
 
     fn raw_lock_time(&self) -> u32 {
-        self.0.lock_time()
+        zp_tx::CompressedTransactionData::lock_time(self)
     }
 
     fn raw_expiry_height(&self) -> u32 {
-        self.0.expiry_height().into()
+        zp_tx::CompressedTransactionData::expiry_height(self).into()
     }
 
     fn transparent_bundle(
         &self,
     ) -> Option<&zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
-        self.0.transparent_bundle()
+        zp_tx::CompressedTransactionData::transparent_bundle(self)
     }
 
     fn sprout_bundle(&self) -> Option<&zp_tx::components::sprout::Bundle> {
-        self.0.sprout_bundle()
+        zp_tx::CompressedTransactionData::sprout_bundle(self)
     }
 
     fn sapling_bundle(&self) -> Option<&Self::Sapling> {
-        self.0.sapling_bundle()
+        zp_tx::CompressedTransactionData::sapling_bundle(self)
     }
 
     fn orchard_bundle(&self) -> Option<&Self::Orchard> {
-        self.0.orchard_bundle()
+        zp_tx::CompressedTransactionData::orchard_bundle(self)
     }
 
     fn ironwood_bundle(&self) -> Option<&Self::Orchard> {
-        self.0.ironwood_bundle()
+        zp_tx::CompressedTransactionData::ironwood_bundle(self)
     }
 
     fn txid(&self) -> zp_tx::TxId {
-        self.0.txid()
+        zp_tx::CompressedTransaction::txid(self)
     }
 
     fn auth_commitment(&self) -> blake2b_simd::Hash {
-        self.0.auth_commitment()
+        zp_tx::CompressedTransaction::auth_commitment(self)
+    }
+
+    fn sighasher(
+        &self,
+        network_upgrade: NetworkUpgrade,
+        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
+    ) -> Result<sighash::SigHasher, Error> {
+        sighash::SigHasher::new(self, network_upgrade, all_previous_outputs)
     }
 }
 
@@ -886,98 +876,66 @@ impl TransactionExt for zp_tx::Transaction {
     fn auth_commitment(&self) -> blake2b_simd::Hash {
         zp_tx::Transaction::auth_commitment(self)
     }
-}
 
-impl PartialEq for Transaction {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.txid() == other.0.txid()
+    fn sighasher(
+        &self,
+        network_upgrade: NetworkUpgrade,
+        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
+    ) -> Result<sighash::SigHasher, Error> {
+        sighash::SigHasher::from_decompressed(self, network_upgrade, all_previous_outputs)
     }
 }
 
-impl Eq for Transaction {}
-
-impl std::fmt::Display for Transaction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut fmter = f.debug_struct("Transaction");
-
-        fmter.field("version", &self.version());
-
-        if let Some(network_upgrade) = self.network_upgrade() {
-            fmter.field("network_upgrade", &network_upgrade);
-        }
-
-        if let Some(lock_time) = self.lock_time() {
-            fmter.field("lock_time", &lock_time);
-        }
-
-        if let Some(expiry_height) = self.expiry_height() {
-            fmter.field("expiry_height", &expiry_height);
-        }
-
-        fmter.field("transparent_inputs", &self.inputs().len());
-        fmter.field("transparent_outputs", &self.outputs().len());
-        fmter.field("sprout_joinsplits", &self.joinsplit_count());
-        fmter.field("sapling_spends", &self.sapling_spends_count());
-        fmter.field("sapling_outputs", &self.sapling_outputs().count());
-        fmter.field("orchard_actions", &self.orchard_actions().count());
-        fmter.field("ironwood_actions", &self.ironwood_actions().count());
-
-        fmter.field("unmined_id", &self.unmined_id());
-
-        fmter.finish()
-    }
-}
-
-impl From<&Transaction> for Hash {
-    fn from(transaction: &Transaction) -> Self {
+impl From<&CompressedTransaction> for Hash {
+    fn from(transaction: &CompressedTransaction) -> Self {
         transaction.hash()
     }
 }
 
-impl From<std::sync::Arc<Transaction>> for Hash {
-    fn from(transaction: std::sync::Arc<Transaction>) -> Self {
+impl From<std::sync::Arc<CompressedTransaction>> for Hash {
+    fn from(transaction: std::sync::Arc<CompressedTransaction>) -> Self {
         transaction.hash()
     }
 }
 
-impl From<&Transaction> for UnminedTxId {
-    fn from(transaction: &Transaction) -> Self {
+impl From<&CompressedTransaction> for UnminedTxId {
+    fn from(transaction: &CompressedTransaction) -> Self {
         transaction.unmined_id()
     }
 }
 
-impl From<std::sync::Arc<Transaction>> for UnminedTxId {
-    fn from(transaction: std::sync::Arc<Transaction>) -> Self {
+impl From<std::sync::Arc<CompressedTransaction>> for UnminedTxId {
+    fn from(transaction: std::sync::Arc<CompressedTransaction>) -> Self {
         transaction.unmined_id()
     }
 }
 
-impl TryFrom<&Transaction> for AuthDigest {
+impl TryFrom<&CompressedTransaction> for AuthDigest {
     type Error = &'static str;
 
     /// Computes the authorizing data commitment for a transaction.
     ///
     /// Returns an error if passed a pre-V5 transaction (which has no auth digest).
-    fn try_from(transaction: &Transaction) -> Result<Self, Self::Error> {
+    fn try_from(transaction: &CompressedTransaction) -> Result<Self, Self::Error> {
         transaction
             .auth_digest()
             .ok_or("pre-V5 transactions do not have an auth digest")
     }
 }
 
-impl crate::serialization::ZcashSerialize for Transaction {
+impl crate::serialization::ZcashSerialize for CompressedTransaction {
     fn zcash_serialize<W: std::io::Write>(&self, writer: W) -> Result<(), std::io::Error> {
-        self.0.write(writer)
+        self.write(writer)
     }
 }
 
 impl crate::serialization::ZcashDeserializeWithContext<zcash_protocol::consensus::BranchId>
-    for Transaction
+    for CompressedTransaction
 {
     /// Deserialize a transaction with a known consensus branch ID.
     ///
     /// Runs the same parse-time consensus checks as
-    /// [`Transaction::zcash_deserialize`](crate::serialization::ZcashDeserialize::zcash_deserialize).
+    /// [`CompressedTransaction::zcash_deserialize`](crate::serialization::ZcashDeserialize::zcash_deserialize).
     fn zcash_deserialize_with_context<R: std::io::Read>(
         reader: R,
         &branch_id: &zcash_protocol::consensus::BranchId,
@@ -986,7 +944,7 @@ impl crate::serialization::ZcashDeserializeWithContext<zcash_protocol::consensus
     }
 }
 
-impl crate::serialization::ZcashDeserialize for Transaction {
+impl crate::serialization::ZcashDeserialize for CompressedTransaction {
     /// Deserialize a transaction without network context.
     ///
     /// # Branch ID handling
@@ -1014,11 +972,11 @@ impl crate::serialization::ZcashDeserialize for Transaction {
 
 /// Parses a transaction and runs the parse-time consensus checks that `zcash_primitives`
 /// does not enforce. Both deserialization impls go through this function, so a transaction
-/// cannot reach a [`Transaction`] value without passing the checks.
+/// cannot reach a [`CompressedTransaction`] value without passing the checks.
 fn deserialize_and_check<R: std::io::Read>(
     reader: R,
     branch_id: zcash_protocol::consensus::BranchId,
-) -> Result<Transaction, crate::serialization::SerializationError> {
+) -> Result<CompressedTransaction, crate::serialization::SerializationError> {
     use std::io::Read as _;
 
     // Limit to MAX_BLOCK_BYTES: a transaction larger than a block is always invalid.
@@ -1069,7 +1027,7 @@ fn deserialize_and_check<R: std::io::Read>(
     // Together, these rules exclude pre-NU6.3 branch IDs from V6 transactions.
     // Older branch IDs select Orchard bundle versions that the V6 writer rejects.
     // Reject them here so every successfully parsed transaction can be serialized.
-    if inner.version() == TxVersion::V6
+    if inner.tx_version() == TxVersion::V6
         && compat::branch_id_to_network_upgrade(inner.consensus_branch_id())
             .is_none_or(|network_upgrade| network_upgrade < NetworkUpgrade::Nu6_3)
     {
@@ -1127,7 +1085,7 @@ fn deserialize_and_check<R: std::io::Read>(
     // `zcash_primitives` reads `valueBalanceSapling` but discards it when there are no
     // Sapling spends or outputs, so the value is not recoverable from the parsed
     // transaction and has to be read back out of the bytes that were consumed.
-    if inner.version() == TxVersion::V4 && inner.sapling_bundle().is_none() {
+    if inner.tx_version() == TxVersion::V4 && inner.sapling_bundle().is_none() {
         if let Some(value_balance) = v4_empty_sapling_value_balance(&raw_bytes, &inner) {
             if value_balance != 0 {
                 return Err(crate::serialization::SerializationError::BadTransactionBalance);
@@ -1135,7 +1093,7 @@ fn deserialize_and_check<R: std::io::Read>(
         }
     }
 
-    Ok(Transaction(inner))
+    Ok(inner)
 }
 
 /// Reads the `valueBalanceSapling` field of a V4 transaction that has no Sapling spends or
@@ -1230,21 +1188,28 @@ impl<R: std::io::Read> std::io::Read for RecordingReader<R> {
     }
 }
 
-impl Clone for Transaction {
-    fn clone(&self) -> Self {
-        Transaction(self.0.clone())
-    }
+/// Human-readable [`serde::Serialize`] view of a [`CompressedTransaction`] (elasticsearch, snapshots)
+///
+/// - Output mirrors the former `Transaction` enum, so RON snapshots stay readable
+#[cfg(any(test, feature = "proptest-impl", feature = "elasticsearch"))]
+pub struct SerdeTransaction<'a>(pub &'a CompressedTransaction);
+
+/// Serializes a block's transactions through [`SerdeTransaction`]
+#[cfg(any(test, feature = "proptest-impl", feature = "elasticsearch"))]
+pub(crate) fn serialize_transactions<S: serde::Serializer>(
+    transactions: &[std::sync::Arc<CompressedTransaction>],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.collect_seq(transactions.iter().map(|tx| SerdeTransaction(tx)))
 }
 
-// Human-readable Serialize for elasticsearch, tests, and snapshots.
-// Produces structured output matching the old Transaction enum format
-// so that RON snapshot tests remain human-readable.
 #[cfg(any(test, feature = "proptest-impl", feature = "elasticsearch"))]
-impl serde::Serialize for Transaction {
+impl serde::Serialize for SerdeTransaction<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStructVariant;
 
-        let version = self.version();
+        let tx = self.0;
+        let version = tx.version();
         // The field counts match the variants of the `Transaction` enum this output mirrors,
         // so V6 must be named and counted separately from V5: it has its own Ironwood bundle.
         let (variant_name, field_count) = match version {
@@ -1265,26 +1230,27 @@ impl serde::Serialize for Transaction {
 
         // V5+ has network_upgrade as the first field (unwrap since V5 always has one)
         if version >= 5 {
-            let nu = self
+            let nu = tx
                 .network_upgrade()
                 .unwrap_or(crate::parameters::NetworkUpgrade::Nu5);
             sv.serialize_field("network_upgrade", &nu)?;
         }
 
-        sv.serialize_field("lock_time", &compat::u32_to_lock_time(self.0.lock_time()))?;
+        sv.serialize_field("lock_time", &compat::u32_to_lock_time(tx.raw_lock_time()))?;
 
         // V3+ has expiry_height (use Height(0) when nExpiryHeight == 0, matching old format)
         if version >= 3 {
             let eh =
-                compat::block_height_to_height(self.0.expiry_height()).unwrap_or(block::Height(0));
+                compat::block_height_to_height(zp_tx::CompressedTransactionData::expiry_height(tx))
+                    .unwrap_or(block::Height(0));
             sv.serialize_field("expiry_height", &eh)?;
         }
 
-        sv.serialize_field("inputs", &self.inputs())?;
-        sv.serialize_field("outputs", &self.outputs())?;
+        sv.serialize_field("inputs", &tx.inputs())?;
+        sv.serialize_field("outputs", &tx.outputs())?;
 
         if (2..=4).contains(&version) {
-            let has_joinsplit = self.has_sprout_joinsplit_data();
+            let has_joinsplit = tx.has_sprout_joinsplit_data();
             sv.serialize_field::<Option<()>>(
                 "joinsplit_data",
                 if has_joinsplit { &Some(()) } else { &None },
@@ -1292,7 +1258,7 @@ impl serde::Serialize for Transaction {
         }
 
         if version >= 4 {
-            let has_sapling = self.has_sapling_shielded_data();
+            let has_sapling = tx.has_sapling_shielded_data();
             sv.serialize_field::<Option<()>>(
                 "sapling_shielded_data",
                 if has_sapling { &Some(()) } else { &None },
@@ -1300,7 +1266,7 @@ impl serde::Serialize for Transaction {
         }
 
         if version >= 5 {
-            let has_orchard = self.has_orchard_shielded_data();
+            let has_orchard = tx.has_orchard_shielded_data();
             sv.serialize_field::<Option<()>>(
                 "orchard_shielded_data",
                 if has_orchard { &Some(()) } else { &None },
@@ -1308,7 +1274,7 @@ impl serde::Serialize for Transaction {
         }
 
         if version >= 6 {
-            let has_ironwood = self.has_ironwood_shielded_data();
+            let has_ironwood = tx.has_ironwood_shielded_data();
             sv.serialize_field::<Option<()>>(
                 "ironwood_shielded_data",
                 if has_ironwood { &Some(()) } else { &None },
@@ -1320,14 +1286,150 @@ impl serde::Serialize for Transaction {
 }
 
 #[cfg(any(test, feature = "proptest-impl"))]
-impl Transaction {
+/// Test builders and mutators for [`CompressedTransaction`]
+pub trait TransactionTestExt: Sized {
     /// Build a V1 transaction from transparent components. Used in tests.
-    pub fn test_v1(
+    fn test_v1(
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+    ) -> Self;
+
+    /// Build a V2 transaction from transparent components. Used in tests.
+    fn test_v2(
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+    ) -> Self;
+
+    /// Build a V3 (Overwinter) transaction from transparent components. Used in tests.
+    fn test_v3(
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+    ) -> Self;
+
+    /// Build a V4 (Sapling) transaction from transparent components. Used in tests.
+    fn test_v4(
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+    ) -> Self;
+
+    /// Build a V5 (NU5) transaction from transparent components. Used in tests.
+    fn test_v5(
+        network_upgrade: crate::parameters::NetworkUpgrade,
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+    ) -> Self;
+
+    /// Build a transparent-only V6 transaction, for tests.
+    fn test_v6(
+        network_upgrade: crate::parameters::NetworkUpgrade,
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+    ) -> Self;
+
+    /// Build a V4 (Canopy) transaction with a Sapling bundle, for tests.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn test_v4_with_sapling(
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+        sapling_bundle: Option<
+            sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>,
+        >,
+    ) -> Self;
+
+    /// Build a V5 transaction with an Orchard bundle, for tests.
+    ///
+    /// The bundle must have been constructed for [`orchard::bundle::BundleVersion::orchard_v2`]
+    /// or [`orchard::bundle::BundleVersion::orchard_v3`], matching `network_upgrade`.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn test_v5_with_orchard(
+        network_upgrade: crate::parameters::NetworkUpgrade,
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+        orchard_bundle: Option<::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
+    ) -> Self;
+
+    /// Build a V6 transaction with Orchard and Ironwood bundles, for tests.
+    ///
+    /// `orchard_bundle` must have been constructed for
+    /// [`orchard::bundle::BundleVersion::orchard_v3`] and `ironwood_bundle` for
+    /// [`orchard::bundle::BundleVersion::ironwood_v3`]; the two slots are not interchangeable.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn test_v6_with_bundles(
+        network_upgrade: crate::parameters::NetworkUpgrade,
+        inputs: Vec<transparent::Input>,
+        outputs: Vec<transparent::Output>,
+        lock_time: LockTime,
+        expiry_height: block::Height,
+        orchard_bundle: Option<::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
+        ironwood_bundle: Option<::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
+    ) -> Self;
+
+    /// Rebuild this transaction with new transparent inputs.
+    fn with_transparent_inputs(self, inputs: Vec<transparent::Input>) -> Self;
+
+    /// Rebuild this transaction with new transparent outputs.
+    fn with_transparent_outputs(self, outputs: Vec<transparent::Output>) -> Self;
+
+    /// Rebuild this transaction with a different expiry height (recomputes txid).
+    fn set_expiry_height(&mut self, height: block::Height);
+
+    /// Rebuild this transaction with a different network upgrade / branch ID (recomputes txid).
+    fn set_network_upgrade(&mut self, nu: NetworkUpgrade);
+
+    /// Replace all transparent outputs (recomputes txid).
+    fn set_outputs(&mut self, outputs: Vec<transparent::Output>);
+
+    /// Rebuild this transaction with a replaced Orchard bundle (recomputes txid).
+    ///
+    /// Test helper for synthesizing transactions with malformed orchard data
+    /// (e.g. duplicated actions) that would otherwise be unreachable through
+    /// normal construction paths.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn with_orchard_bundle(
+        self,
+        bundle: Option<::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
+    ) -> Self;
+
+    /// Rebuild this transaction with a replaced Sapling bundle (recomputes txid).
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn with_sapling_bundle(
+        self,
+        bundle: Option<sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>>,
+    ) -> Self;
+
+    /// Rebuild this transaction with a replaced Sprout bundle (recomputes txid).
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn with_sprout_bundle(self, bundle: Option<crate::sprout::JoinSplitData>) -> Self;
+
+    /// Build a V4 (Canopy) transaction with a Sprout JoinSplit bundle, for tests.
+    ///
+    /// Transparent and Sapling components are empty.
+    #[cfg(any(test, feature = "proptest-impl"))]
+    fn test_v4_with_sprout(sprout_bundle: Option<crate::sprout::JoinSplitData>) -> Self;
+}
+
+#[cfg(any(test, feature = "proptest-impl"))]
+impl TransactionTestExt for CompressedTransaction {
+    fn test_v1(
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
         lock_time: LockTime,
     ) -> Self {
-        Self::build_transparent(
+        build_transparent(
             zcash_primitives::transaction::TxVersion::Sprout(1),
             zcash_protocol::consensus::BranchId::Sprout,
             compat::lock_time_to_u32(&lock_time),
@@ -1337,13 +1439,12 @@ impl Transaction {
         )
     }
 
-    /// Build a V2 transaction from transparent components. Used in tests.
-    pub fn test_v2(
+    fn test_v2(
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
         lock_time: LockTime,
     ) -> Self {
-        Self::build_transparent(
+        build_transparent(
             zcash_primitives::transaction::TxVersion::Sprout(2),
             zcash_protocol::consensus::BranchId::Sprout,
             compat::lock_time_to_u32(&lock_time),
@@ -1353,14 +1454,13 @@ impl Transaction {
         )
     }
 
-    /// Build a V3 (Overwinter) transaction from transparent components. Used in tests.
-    pub fn test_v3(
+    fn test_v3(
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
         lock_time: LockTime,
         expiry_height: block::Height,
     ) -> Self {
-        Self::build_transparent(
+        build_transparent(
             zcash_primitives::transaction::TxVersion::V3,
             zcash_protocol::consensus::BranchId::Overwinter,
             compat::lock_time_to_u32(&lock_time),
@@ -1370,14 +1470,13 @@ impl Transaction {
         )
     }
 
-    /// Build a V4 (Sapling) transaction from transparent components. Used in tests.
-    pub fn test_v4(
+    fn test_v4(
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
         lock_time: LockTime,
         expiry_height: block::Height,
     ) -> Self {
-        Self::build_transparent(
+        build_transparent(
             zcash_primitives::transaction::TxVersion::V4,
             zcash_protocol::consensus::BranchId::Canopy,
             compat::lock_time_to_u32(&lock_time),
@@ -1387,8 +1486,7 @@ impl Transaction {
         )
     }
 
-    /// Build a V5 (NU5) transaction from transparent components. Used in tests.
-    pub fn test_v5(
+    fn test_v5(
         network_upgrade: crate::parameters::NetworkUpgrade,
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
@@ -1399,7 +1497,7 @@ impl Transaction {
             .branch_id()
             .and_then(|cbid| zcash_protocol::consensus::BranchId::try_from(cbid).ok())
             .expect("the test transaction upgrade has a supported consensus branch ID");
-        Self::build_transparent(
+        build_transparent(
             zcash_primitives::transaction::TxVersion::V5,
             branch_id,
             compat::lock_time_to_u32(&lock_time),
@@ -1409,8 +1507,7 @@ impl Transaction {
         )
     }
 
-    /// Build a transparent-only V6 transaction, for tests.
-    pub fn test_v6(
+    fn test_v6(
         network_upgrade: crate::parameters::NetworkUpgrade,
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
@@ -1421,7 +1518,7 @@ impl Transaction {
             .branch_id()
             .and_then(|cbid| zcash_protocol::consensus::BranchId::try_from(cbid).ok())
             .expect("the test transaction upgrade has a supported consensus branch ID");
-        Self::build_transparent(
+        build_transparent(
             zcash_primitives::transaction::TxVersion::V6,
             branch_id,
             compat::lock_time_to_u32(&lock_time),
@@ -1431,46 +1528,7 @@ impl Transaction {
         )
     }
 
-    fn build_transparent(
-        version: zcash_primitives::transaction::TxVersion,
-        branch_id: zcash_protocol::consensus::BranchId,
-        lock_time: u32,
-        expiry_height: zcash_protocol::consensus::BlockHeight,
-        inputs: Vec<transparent::Input>,
-        outputs: Vec<transparent::Output>,
-    ) -> Self {
-        let vin: Vec<_> = inputs.iter().map(compat::input_to_txin).collect();
-        let vout: Vec<_> = outputs.iter().map(compat::output_to_txout).collect();
-        let transparent_bundle = if vin.is_empty() && vout.is_empty() {
-            None
-        } else {
-            Some(zcash_transparent::bundle::Bundle {
-                vin,
-                vout,
-                authorization: zcash_transparent::bundle::Authorized,
-            })
-        };
-        let tx_data = zp_tx::TransactionData::from_parts(
-            version,
-            branch_id,
-            lock_time,
-            expiry_height,
-            transparent_bundle,
-            None,
-            None,
-            None,
-        );
-        Transaction(
-            tx_data
-                .freeze()
-                .expect("built from valid components")
-                .compress(),
-        )
-    }
-
-    /// Build a V4 (Canopy) transaction with a Sapling bundle, for tests.
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn test_v4_with_sapling(
+    fn test_v4_with_sapling(
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
         lock_time: LockTime,
@@ -1484,26 +1542,19 @@ impl Transaction {
             zcash_protocol::consensus::BranchId::Canopy,
             compat::lock_time_to_u32(&lock_time),
             compat::height_to_block_height(expiry_height),
-            Self::transparent_bundle_from(inputs, outputs),
+            transparent_bundle_from(inputs, outputs),
             None,
             sapling_bundle,
             None,
         );
 
-        Transaction(
-            tx_data
-                .freeze()
-                .expect("built from valid components")
-                .compress(),
-        )
+        tx_data
+            .freeze()
+            .expect("built from valid components")
+            .compress()
     }
 
-    /// Build a V5 transaction with an Orchard bundle, for tests.
-    ///
-    /// The bundle must have been constructed for [`orchard::bundle::BundleVersion::orchard_v2`]
-    /// or [`orchard::bundle::BundleVersion::orchard_v3`], matching `network_upgrade`.
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn test_v5_with_orchard(
+    fn test_v5_with_orchard(
         network_upgrade: crate::parameters::NetworkUpgrade,
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
@@ -1521,27 +1572,19 @@ impl Transaction {
             branch_id,
             compat::lock_time_to_u32(&lock_time),
             compat::height_to_block_height(expiry_height),
-            Self::transparent_bundle_from(inputs, outputs),
+            transparent_bundle_from(inputs, outputs),
             None,
             None,
             orchard_bundle,
         );
 
-        Transaction(
-            tx_data
-                .freeze()
-                .expect("built from valid components")
-                .compress(),
-        )
+        tx_data
+            .freeze()
+            .expect("built from valid components")
+            .compress()
     }
 
-    /// Build a V6 transaction with Orchard and Ironwood bundles, for tests.
-    ///
-    /// `orchard_bundle` must have been constructed for
-    /// [`orchard::bundle::BundleVersion::orchard_v3`] and `ironwood_bundle` for
-    /// [`orchard::bundle::BundleVersion::ironwood_v3`]; the two slots are not interchangeable.
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn test_v6_with_bundles(
+    fn test_v6_with_bundles(
         network_upgrade: crate::parameters::NetworkUpgrade,
         inputs: Vec<transparent::Input>,
         outputs: Vec<transparent::Output>,
@@ -1559,45 +1602,24 @@ impl Transaction {
             branch_id,
             compat::lock_time_to_u32(&lock_time),
             compat::height_to_block_height(expiry_height),
-            Self::transparent_bundle_from(inputs, outputs),
+            transparent_bundle_from(inputs, outputs),
             None,
             orchard_bundle,
             ironwood_bundle,
         );
 
-        Transaction(
-            tx_data
-                .freeze()
-                .expect("built from valid components")
-                .compress(),
-        )
+        tx_data
+            .freeze()
+            .expect("built from valid components")
+            .compress()
     }
 
-    /// Converts Zebra transparent inputs and outputs into a librustzcash bundle,
-    /// returning `None` if both are empty.
-    #[cfg(any(test, feature = "proptest-impl"))]
-    fn transparent_bundle_from(
-        inputs: Vec<transparent::Input>,
-        outputs: Vec<transparent::Output>,
-    ) -> Option<zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
-        let vin: Vec<_> = inputs.iter().map(compat::input_to_txin).collect();
-        let vout: Vec<_> = outputs.iter().map(compat::output_to_txout).collect();
-
-        (!vin.is_empty() || !vout.is_empty()).then_some(zcash_transparent::bundle::Bundle {
-            vin,
-            vout,
-            authorization: zcash_transparent::bundle::Authorized,
-        })
-    }
-
-    /// Rebuild this transaction with new transparent inputs.
-    pub fn with_transparent_inputs(self, inputs: Vec<transparent::Input>) -> Self {
+    fn with_transparent_inputs(self, inputs: Vec<transparent::Input>) -> Self {
         let vin = inputs
             .iter()
             .map(crate::transaction::compat::input_to_txin)
             .collect();
         let vout = self
-            .0
             .transparent_bundle()
             .map(|b| b.vout.clone())
             .unwrap_or_default();
@@ -1606,13 +1628,11 @@ impl Transaction {
             vout,
             authorization: zcash_transparent::bundle::Authorized,
         });
-        self.rebuild_with_transparent(transparent_bundle)
+        rebuild_with_transparent(&self, transparent_bundle)
     }
 
-    /// Rebuild this transaction with new transparent outputs.
-    pub fn with_transparent_outputs(self, outputs: Vec<transparent::Output>) -> Self {
+    fn with_transparent_outputs(self, outputs: Vec<transparent::Output>) -> Self {
         let vin = self
-            .0
             .transparent_bundle()
             .map(|b| b.vin.clone())
             .unwrap_or_default();
@@ -1629,33 +1649,11 @@ impl Transaction {
                 authorization: zcash_transparent::bundle::Authorized,
             })
         };
-        self.rebuild_with_transparent(transparent_bundle)
+        rebuild_with_transparent(&self, transparent_bundle)
     }
 
-    fn rebuild_with_transparent(
-        self,
-        transparent_bundle: Option<
-            zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>,
-        >,
-    ) -> Self {
-        let data = &*self.0;
-        let tx_data = compat::compressed_data_from_parts(
-            data.version(),
-            data.consensus_branch_id(),
-            data.lock_time(),
-            data.expiry_height(),
-            transparent_bundle,
-            data.sprout_bundle().cloned(),
-            data.sapling_bundle().cloned(),
-            data.orchard_bundle().cloned(),
-            data.ironwood_bundle().cloned(),
-        );
-        Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
-    }
-
-    /// Rebuild this transaction with a different expiry height (recomputes txid).
-    pub fn set_expiry_height(&mut self, height: block::Height) {
-        let data = self.0.clone().into_data();
+    fn set_expiry_height(&mut self, height: block::Height) {
+        let data = self.clone().into_data();
         let new_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
@@ -1667,16 +1665,15 @@ impl Transaction {
             data.orchard_bundle().cloned(),
             data.ironwood_bundle().cloned(),
         );
-        self.0 = new_data.freeze().expect("rebuilt from valid transaction");
+        *self = new_data.freeze().expect("rebuilt from valid transaction");
     }
 
-    /// Rebuild this transaction with a different network upgrade / branch ID (recomputes txid).
-    pub fn set_network_upgrade(&mut self, nu: NetworkUpgrade) {
+    fn set_network_upgrade(&mut self, nu: NetworkUpgrade) {
         let branch_id = nu
             .branch_id()
             .and_then(|cbid| zcash_protocol::consensus::BranchId::try_from(cbid).ok())
             .expect("network upgrade must have a valid branch ID");
-        let data = self.0.clone().into_data();
+        let data = self.clone().into_data();
         let new_data = compat::compressed_data_from_parts(
             data.version(),
             branch_id,
@@ -1688,25 +1685,18 @@ impl Transaction {
             data.orchard_bundle().cloned(),
             data.ironwood_bundle().cloned(),
         );
-        self.0 = new_data.freeze().expect("rebuilt from valid transaction");
+        *self = new_data.freeze().expect("rebuilt from valid transaction");
     }
 
-    /// Replace all transparent outputs (recomputes txid).
-    pub fn set_outputs(&mut self, outputs: Vec<transparent::Output>) {
+    fn set_outputs(&mut self, outputs: Vec<transparent::Output>) {
         *self = self.clone().with_transparent_outputs(outputs);
     }
 
-    /// Rebuild this transaction with a replaced Orchard bundle (recomputes txid).
-    ///
-    /// Test helper for synthesizing transactions with malformed orchard data
-    /// (e.g. duplicated actions) that would otherwise be unreachable through
-    /// normal construction paths.
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn with_orchard_bundle(
+    fn with_orchard_bundle(
         self,
         bundle: Option<::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
     ) -> Self {
-        let data = &*self.0;
+        let data: &zp_tx::CompressedTransactionData = &self;
         let tx_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
@@ -1718,16 +1708,14 @@ impl Transaction {
             bundle.map(::orchard::Bundle::compress),
             data.ironwood_bundle().cloned(),
         );
-        Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
+        tx_data.freeze().expect("rebuilt from valid transaction")
     }
 
-    /// Rebuild this transaction with a replaced Sapling bundle (recomputes txid).
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn with_sapling_bundle(
+    fn with_sapling_bundle(
         self,
         bundle: Option<sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>>,
     ) -> Self {
-        let data = &*self.0;
+        let data: &zp_tx::CompressedTransactionData = &self;
         let tx_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
@@ -1739,13 +1727,11 @@ impl Transaction {
             data.orchard_bundle().cloned(),
             data.ironwood_bundle().cloned(),
         );
-        Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
+        tx_data.freeze().expect("rebuilt from valid transaction")
     }
 
-    /// Rebuild this transaction with a replaced Sprout bundle (recomputes txid).
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn with_sprout_bundle(self, bundle: Option<crate::sprout::JoinSplitData>) -> Self {
-        let data = &*self.0;
+    fn with_sprout_bundle(self, bundle: Option<crate::sprout::JoinSplitData>) -> Self {
+        let data: &zp_tx::CompressedTransactionData = &self;
         let tx_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
@@ -1757,14 +1743,10 @@ impl Transaction {
             data.orchard_bundle().cloned(),
             data.ironwood_bundle().cloned(),
         );
-        Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
+        tx_data.freeze().expect("rebuilt from valid transaction")
     }
 
-    /// Build a V4 (Canopy) transaction with a Sprout JoinSplit bundle, for tests.
-    ///
-    /// Transparent and Sapling components are empty.
-    #[cfg(any(test, feature = "proptest-impl"))]
-    pub fn test_v4_with_sprout(sprout_bundle: Option<crate::sprout::JoinSplitData>) -> Self {
+    fn test_v4_with_sprout(sprout_bundle: Option<crate::sprout::JoinSplitData>) -> Self {
         let tx_data = zp_tx::TransactionData::from_parts(
             zp_tx::TxVersion::V4,
             zcash_protocol::consensus::BranchId::Canopy,
@@ -1776,11 +1758,84 @@ impl Transaction {
             None,
         );
 
-        Transaction(
-            tx_data
-                .freeze()
-                .expect("built from valid components")
-                .compress(),
-        )
+        tx_data
+            .freeze()
+            .expect("built from valid components")
+            .compress()
     }
+}
+
+#[cfg(any(test, feature = "proptest-impl"))]
+fn build_transparent(
+    version: zcash_primitives::transaction::TxVersion,
+    branch_id: zcash_protocol::consensus::BranchId,
+    lock_time: u32,
+    expiry_height: zcash_protocol::consensus::BlockHeight,
+    inputs: Vec<transparent::Input>,
+    outputs: Vec<transparent::Output>,
+) -> CompressedTransaction {
+    let vin: Vec<_> = inputs.iter().map(compat::input_to_txin).collect();
+    let vout: Vec<_> = outputs.iter().map(compat::output_to_txout).collect();
+    let transparent_bundle = if vin.is_empty() && vout.is_empty() {
+        None
+    } else {
+        Some(zcash_transparent::bundle::Bundle {
+            vin,
+            vout,
+            authorization: zcash_transparent::bundle::Authorized,
+        })
+    };
+    let tx_data = zp_tx::TransactionData::from_parts(
+        version,
+        branch_id,
+        lock_time,
+        expiry_height,
+        transparent_bundle,
+        None,
+        None,
+        None,
+    );
+    tx_data
+        .freeze()
+        .expect("built from valid components")
+        .compress()
+}
+
+#[cfg(any(test, feature = "proptest-impl"))]
+/// Converts Zebra transparent inputs and outputs into a librustzcash bundle,
+/// returning `None` if both are empty.
+fn transparent_bundle_from(
+    inputs: Vec<transparent::Input>,
+    outputs: Vec<transparent::Output>,
+) -> Option<zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
+    let vin: Vec<_> = inputs.iter().map(compat::input_to_txin).collect();
+    let vout: Vec<_> = outputs.iter().map(compat::output_to_txout).collect();
+
+    (!vin.is_empty() || !vout.is_empty()).then_some(zcash_transparent::bundle::Bundle {
+        vin,
+        vout,
+        authorization: zcash_transparent::bundle::Authorized,
+    })
+}
+
+#[cfg(any(test, feature = "proptest-impl"))]
+fn rebuild_with_transparent(
+    transaction: &CompressedTransaction,
+    transparent_bundle: Option<
+        zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>,
+    >,
+) -> CompressedTransaction {
+    let data: &zp_tx::CompressedTransactionData = transaction;
+    let tx_data = compat::compressed_data_from_parts(
+        data.version(),
+        data.consensus_branch_id(),
+        data.lock_time(),
+        data.expiry_height(),
+        transparent_bundle,
+        data.sprout_bundle().cloned(),
+        data.sapling_bundle().cloned(),
+        data.orchard_bundle().cloned(),
+        data.ironwood_bundle().cloned(),
+    );
+    tx_data.freeze().expect("rebuilt from valid transaction")
 }
