@@ -80,10 +80,10 @@ fn get_interpreter(
 /// Transaction.
 #[derive(Debug)]
 pub struct CachedFfiTransaction {
-    /// The deserialized Zebra transaction.
+    /// The decompressed transaction (point rules checked).
     ///
     /// This field is private so that `transaction`, and `all_previous_outputs` always match.
-    transaction: Arc<zebra_chain::transaction::CompressedTransaction>,
+    transaction: Arc<zcash_primitives::transaction::Transaction>,
 
     /// The outputs from previous transactions that match each input in the transaction
     /// being verified.
@@ -94,41 +94,16 @@ pub struct CachedFfiTransaction {
 }
 
 impl CachedFfiTransaction {
-    /// Construct a `CachedFfiTransaction` from a `Transaction` and the outputs
+    /// Construct a `CachedFfiTransaction` from a decompressed transaction and the outputs
     /// from previous transactions that match each input in the transaction
     /// being verified.
     pub fn new(
-        transaction: Arc<zebra_chain::transaction::CompressedTransaction>,
+        transaction: Arc<zcash_primitives::transaction::Transaction>,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
         nu: NetworkUpgrade,
     ) -> Result<Self, Error> {
-        let sighasher = SigHasher::new(&transaction, nu, all_previous_outputs.clone())?;
-        Ok(Self {
-            transaction,
-            all_previous_outputs,
-            sighasher,
-        })
-    }
-
-    /// [`CachedFfiTransaction::new`] reusing points `Transaction::decompress` already checked
-    ///
-    /// # Panics
-    ///
-    /// If `decompressed` is not `transaction`'s decompressed form (txids differ).
-    pub fn from_decompressed(
-        transaction: Arc<zebra_chain::transaction::CompressedTransaction>,
-        decompressed: zcash_primitives::transaction::Transaction,
-        all_previous_outputs: Arc<Vec<transparent::Output>>,
-        nu: NetworkUpgrade,
-    ) -> Result<Self, Error> {
-        assert_eq!(
-            *decompressed.txid().as_ref(),
-            transaction.hash().0,
-            "decompressed form must come from the same transaction",
-        );
-
         let sighasher =
-            SigHasher::from_decompressed(&decompressed, nu, all_previous_outputs.clone())?;
+            SigHasher::from_decompressed(&transaction, nu, all_previous_outputs.clone())?;
         Ok(Self {
             transaction,
             all_previous_outputs,
@@ -169,7 +144,7 @@ impl CachedFfiTransaction {
     ///
     /// [`GetP2SHSigOpCount()`]: https://github.com/zcash/zcash/blob/v6.11.0/src/main.cpp#L840-L852
     pub fn p2sh_sigops(&self) -> u32 {
-        p2sh_sigop_count(&self.transaction, &self.all_previous_outputs)
+        p2sh_sigop_count(self.transaction.as_ref(), &self.all_previous_outputs)
     }
 
     /// Verify if the script in the input at `input_index` of a transaction correctly spends the
@@ -466,10 +441,7 @@ pub fn p2sh_input_sigop_count(
 /// incorrect (undercount) result.
 ///
 /// [`GetP2SHSigOpCount()`]: https://github.com/zcash/zcash/blob/v6.11.0/src/main.cpp#L840-L852
-pub fn p2sh_sigop_count(
-    tx: &zebra_chain::transaction::CompressedTransaction,
-    spent_outputs: &[transparent::Output],
-) -> u32 {
+pub fn p2sh_sigop_count<T: TransactionExt>(tx: &T, spent_outputs: &[transparent::Output]) -> u32 {
     if tx.is_coinbase() {
         return 0;
     }

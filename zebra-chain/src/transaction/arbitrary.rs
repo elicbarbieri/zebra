@@ -657,7 +657,7 @@ impl Arbitrary for UnminedTx {
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
         CompressedTransaction::strategy(LedgerState::default())
-            .prop_map(|tx| UnminedTx::from(Arc::new(tx)))
+            .prop_map(|tx| UnminedTx::try_from(tx).expect("arbitrary transactions decompress"))
             .boxed()
     }
 

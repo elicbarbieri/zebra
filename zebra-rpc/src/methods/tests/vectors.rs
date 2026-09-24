@@ -1407,7 +1407,12 @@ async fn rpc_getrawtransaction() {
                 .map(|responder| {
                     responder.respond(mempool::Response::Transactions(vec![UnminedTx {
                         id: UnminedTxId::Legacy(tx.hash()),
-                        transaction: tx.clone(),
+                        transaction: Arc::new(
+                            tx.as_ref()
+                                .clone()
+                                .decompress()
+                                .expect("test transactions decompress"),
+                        ),
                         size: 0,
                         conventional_fee: Amount::zero(),
                     }]));
@@ -3299,7 +3304,12 @@ async fn gbt_with(net: Network, addr: ZcashAddress) {
     ));
 
     let unmined_tx = UnminedTx {
-        transaction: tx.clone(),
+        transaction: Arc::new(
+            (*tx)
+                .clone()
+                .decompress()
+                .expect("test transactions decompress"),
+        ),
         id: tx.unmined_id(),
         size: tx.zcash_serialized_size(),
         conventional_fee: 0.try_into().unwrap(),
@@ -3684,7 +3694,12 @@ async fn getblocktemplate_long_poll_waits_for_a_new_template() {
         transaction::LockTime::unlocked(),
     ));
     let unmined_tx = UnminedTx {
-        transaction: tx.clone(),
+        transaction: Arc::new(
+            (*tx)
+                .clone()
+                .decompress()
+                .expect("test transactions decompress"),
+        ),
         id: tx.unmined_id(),
         size: tx.zcash_serialized_size(),
         conventional_fee: 0.try_into().unwrap(),

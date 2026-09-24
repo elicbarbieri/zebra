@@ -344,7 +344,8 @@ async fn outbound_tx_unrelated_response_notfound() -> Result<(), crate::BoxError
     let unrelated_response: CompressedTransaction =
         zebra_test::vectors::DUMMY_TX1.zcash_deserialize_into()?;
     let unrelated_response = Response::Transactions(vec![Available((
-        std::sync::Arc::new(unrelated_response).into(),
+        UnminedTx::try_from(std::sync::Arc::new(unrelated_response))
+            .expect("test transactions decompress"),
         None,
     ))]);
 
@@ -492,7 +493,8 @@ async fn outbound_tx_partial_response_notfound() -> Result<(), crate::BoxError> 
     // We repeatedly respond with the same transaction, so the peer gives up on the second response.
     let repeated_tx: CompressedTransaction =
         zebra_test::vectors::DUMMY_TX1.zcash_deserialize_into()?;
-    let repeated_tx: UnminedTx = std::sync::Arc::new(repeated_tx).into();
+    let repeated_tx = UnminedTx::try_from(std::sync::Arc::new(repeated_tx))
+        .expect("test transactions decompress");
     let repeated_response = Response::Transactions(vec![
         Available((repeated_tx.clone(), None)),
         Available((repeated_tx.clone(), None)),

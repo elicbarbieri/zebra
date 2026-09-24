@@ -827,6 +827,125 @@ impl TransactionExt for CompressedTransaction {
     }
 }
 
+/// Helpers through `Arc` and references, like `Iterator` for `&mut I`
+impl<T: TransactionExt + ?Sized> TransactionExt for std::sync::Arc<T> {
+    type Sapling = T::Sapling;
+    type Orchard = T::Orchard;
+
+    fn tx_version(&self) -> TxVersion {
+        (**self).tx_version()
+    }
+
+    fn consensus_branch_id(&self) -> zcash_protocol::consensus::BranchId {
+        (**self).consensus_branch_id()
+    }
+
+    fn raw_lock_time(&self) -> u32 {
+        (**self).raw_lock_time()
+    }
+
+    fn raw_expiry_height(&self) -> u32 {
+        (**self).raw_expiry_height()
+    }
+
+    fn transparent_bundle(
+        &self,
+    ) -> Option<&zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
+        (**self).transparent_bundle()
+    }
+
+    fn sprout_bundle(&self) -> Option<&zp_tx::components::sprout::Bundle> {
+        (**self).sprout_bundle()
+    }
+
+    fn sapling_bundle(&self) -> Option<&Self::Sapling> {
+        (**self).sapling_bundle()
+    }
+
+    fn orchard_bundle(&self) -> Option<&Self::Orchard> {
+        (**self).orchard_bundle()
+    }
+
+    fn ironwood_bundle(&self) -> Option<&Self::Orchard> {
+        (**self).ironwood_bundle()
+    }
+
+    fn txid(&self) -> zp_tx::TxId {
+        (**self).txid()
+    }
+
+    fn auth_commitment(&self) -> blake2b_simd::Hash {
+        (**self).auth_commitment()
+    }
+
+    fn sighasher(
+        &self,
+        network_upgrade: NetworkUpgrade,
+        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
+    ) -> Result<sighash::SigHasher, Error> {
+        (**self).sighasher(network_upgrade, all_previous_outputs)
+    }
+}
+
+impl<T: TransactionExt + ?Sized> TransactionExt for &T {
+    type Sapling = T::Sapling;
+    type Orchard = T::Orchard;
+
+    fn tx_version(&self) -> TxVersion {
+        (**self).tx_version()
+    }
+
+    fn consensus_branch_id(&self) -> zcash_protocol::consensus::BranchId {
+        (**self).consensus_branch_id()
+    }
+
+    fn raw_lock_time(&self) -> u32 {
+        (**self).raw_lock_time()
+    }
+
+    fn raw_expiry_height(&self) -> u32 {
+        (**self).raw_expiry_height()
+    }
+
+    fn transparent_bundle(
+        &self,
+    ) -> Option<&zcash_transparent::bundle::Bundle<zcash_transparent::bundle::Authorized>> {
+        (**self).transparent_bundle()
+    }
+
+    fn sprout_bundle(&self) -> Option<&zp_tx::components::sprout::Bundle> {
+        (**self).sprout_bundle()
+    }
+
+    fn sapling_bundle(&self) -> Option<&Self::Sapling> {
+        (**self).sapling_bundle()
+    }
+
+    fn orchard_bundle(&self) -> Option<&Self::Orchard> {
+        (**self).orchard_bundle()
+    }
+
+    fn ironwood_bundle(&self) -> Option<&Self::Orchard> {
+        (**self).ironwood_bundle()
+    }
+
+    fn txid(&self) -> zp_tx::TxId {
+        (**self).txid()
+    }
+
+    fn auth_commitment(&self) -> blake2b_simd::Hash {
+        (**self).auth_commitment()
+    }
+
+    fn sighasher(
+        &self,
+        network_upgrade: NetworkUpgrade,
+        all_previous_outputs: std::sync::Arc<Vec<transparent::Output>>,
+    ) -> Result<sighash::SigHasher, Error> {
+        (**self).sighasher(network_upgrade, all_previous_outputs)
+    }
+}
+
 impl TransactionExt for zp_tx::Transaction {
     type Sapling = sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>;
     type Orchard = ::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>;
@@ -929,6 +1048,13 @@ impl crate::serialization::ZcashSerialize for CompressedTransaction {
     }
 }
 
+/// Re-encodes the points (byte-identical to the parsed encoding)
+impl crate::serialization::ZcashSerialize for zp_tx::Transaction {
+    fn zcash_serialize<W: std::io::Write>(&self, writer: W) -> Result<(), std::io::Error> {
+        self.write(writer)
+    }
+}
+
 impl crate::serialization::ZcashDeserializeWithContext<zcash_protocol::consensus::BranchId>
     for CompressedTransaction
 {
@@ -967,6 +1093,17 @@ impl crate::serialization::ZcashDeserialize for CompressedTransaction {
         reader: R,
     ) -> Result<Self, crate::serialization::SerializationError> {
         deserialize_and_check(reader, zcash_protocol::consensus::BranchId::Canopy)
+    }
+}
+
+/// Parses and decompresses (the eager parse: a bad point is a parse error)
+impl crate::serialization::ZcashDeserialize for zp_tx::Transaction {
+    fn zcash_deserialize<R: std::io::Read>(
+        reader: R,
+    ) -> Result<Self, crate::serialization::SerializationError> {
+        CompressedTransaction::zcash_deserialize(reader)?
+            .decompress()
+            .map_err(|error| Error::from(error).into())
     }
 }
 

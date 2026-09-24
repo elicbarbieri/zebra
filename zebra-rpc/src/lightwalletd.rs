@@ -6,10 +6,9 @@
 //!
 //! [`zcash/lightwalletd`]: https://github.com/zcash/lightwalletd/tree/master/walletrpc
 
-use zebra_chain::{
-    block, transaction,
-    transaction::{CompressedTransaction, TransactionExt},
-};
+use orchard::bundle::ActionEncoding;
+use sapling_crypto::bundle::OutputDescriptionEncoding as _;
+use zebra_chain::{block, transaction, transaction::TransactionExt};
 
 #[cfg(test)]
 mod tests;
@@ -37,7 +36,7 @@ const COMPACT_CIPHERTEXT_SIZE: usize = 52;
 
 /// Returns true if the transaction contains any data that belongs in a
 /// [`CompactTx`]: Sapling spends or outputs, or Orchard or Ironwood actions.
-pub(crate) fn has_compact_data(tx: &CompressedTransaction) -> bool {
+pub(crate) fn has_compact_data<T: TransactionExt>(tx: &T) -> bool {
     tx.sapling_nullifiers().next().is_some()
         || tx.sapling_outputs().next().is_some()
         || tx.orchard_actions().next().is_some()
@@ -49,7 +48,7 @@ pub(crate) fn has_compact_data(tx: &CompressedTransaction) -> bool {
 ///
 /// Outputs are omitted in that mode, so a transaction with only Sapling outputs would
 /// otherwise be included as a [`CompactTx`] carrying nothing but an index and a hash.
-pub(crate) fn has_nullifiers(tx: &CompressedTransaction) -> bool {
+pub(crate) fn has_nullifiers<T: TransactionExt>(tx: &T) -> bool {
     tx.sapling_nullifiers().next().is_some()
         || tx.orchard_actions().next().is_some()
         || tx.ironwood_actions().next().is_some()
@@ -59,12 +58,7 @@ pub(crate) fn has_nullifiers(tx: &CompressedTransaction) -> bool {
 ///
 /// Ironwood reuses the Orchard action encoding, so the same conversion serves both pools.
 /// If `nullifiers_only` is true, only the nullifier is included.
-fn compact_action(
-    action: &::orchard::ActionBytes<
-        <::orchard::bundle::Authorized as ::orchard::bundle::Authorization>::SpendAuth,
-    >,
-    nullifiers_only: bool,
-) -> CompactOrchardAction {
+fn compact_action<A: ActionEncoding>(action: &A, nullifiers_only: bool) -> CompactOrchardAction {
     let mut compact_action = CompactOrchardAction {
         nullifier: action.nullifier().to_bytes().to_vec(),
         ..Default::default()
@@ -141,7 +135,7 @@ impl CompactTx {
     pub fn from_transaction(
         index: u64,
         hash: transaction::Hash,
-        tx: &CompressedTransaction,
+        tx: &impl TransactionExt,
         nullifiers_only: bool,
     ) -> Self {
         let spends = tx

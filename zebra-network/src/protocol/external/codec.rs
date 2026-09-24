@@ -4,7 +4,6 @@ use std::{
     cmp::min,
     fmt,
     io::{Cursor, Read, Write},
-    sync::Arc,
 };
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -21,7 +20,7 @@ use zebra_chain::{
         SerializationError as Error, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize,
         MAX_HEADERS_PER_MESSAGE, MAX_PROTOCOL_MESSAGE_LEN,
     },
-    transaction::CompressedTransaction,
+    transaction::{CompressedTransaction, UnminedTx},
 };
 
 use crate::constants;
@@ -740,8 +739,7 @@ impl Codec {
     }
 
     fn read_tx<R: Read + std::marker::Send>(&self, reader: R) -> Result<Message, Error> {
-        let result = Self::deserialize_transaction_spawning(reader);
-        Ok(Message::Tx(Arc::new(result?).into()))
+        Ok(Message::Tx(Self::deserialize_transaction_spawning(reader)?))
     }
 
     fn read_mempool<R: Read>(&self, mut _reader: R) -> Result<Message, Error> {
@@ -790,11 +788,13 @@ impl Codec {
         Ok(Message::FilterClear)
     }
 
-    /// Given the reader, deserialize the transaction in the rayon thread pool.
+    /// Given the reader, deserialize and decompress the transaction in the rayon thread pool.
+    ///
+    /// - Point rules checked here, where the bytes enter (bad point = codec error = disconnect)
     #[allow(clippy::unwrap_in_result)]
     fn deserialize_transaction_spawning<R: Read + std::marker::Send>(
         reader: R,
-    ) -> Result<CompressedTransaction, Error> {
+    ) -> Result<UnminedTx, Error> {
         let mut result = None;
 
         // Correctness: Do CPU-intensive work on a dedicated thread, to avoid blocking other futures.
@@ -807,7 +807,14 @@ impl Codec {
         // - There is no way to check the blocking task's future for panics
         tokio::task::block_in_place(|| {
             rayon::in_place_scope_fifo(|s| {
-                s.spawn_fifo(|_s| result = Some(CompressedTransaction::zcash_deserialize(reader)))
+                s.spawn_fifo(|_s| {
+                    result = Some(
+                        CompressedTransaction::zcash_deserialize(reader).and_then(|tx| {
+                            UnminedTx::try_from(tx)
+                                .map_err(|error| zebra_chain::Error::from(error).into())
+                        }),
+                    )
+                })
             })
         });
 

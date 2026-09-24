@@ -44,7 +44,12 @@ async fn verifier_returns_error_for_out_of_range_input_index() {
 
     let cached = Arc::new(
         CachedFfiTransaction::new(
-            tx.clone(),
+            Arc::new(
+                (*tx)
+                    .clone()
+                    .decompress()
+                    .expect("test vector decompresses"),
+            ),
             Arc::new(previous_outputs),
             NetworkUpgrade::Sapling,
         )
