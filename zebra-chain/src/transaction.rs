@@ -1590,6 +1590,45 @@ impl Transaction {
         Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
     }
 
+    /// Rebuild this transaction with a replaced Sapling bundle (recomputes txid).
+    #[cfg(any(test, feature = "proptest-impl"))]
+    pub fn with_sapling_bundle(
+        self,
+        bundle: Option<sapling_crypto::Bundle<sapling_crypto::bundle::Authorized, ZatBalance>>,
+    ) -> Self {
+        let data = &*self.0;
+        let tx_data = compat::compressed_data_from_parts(
+            data.version(),
+            data.consensus_branch_id(),
+            data.lock_time(),
+            data.expiry_height(),
+            data.transparent_bundle().cloned(),
+            data.sprout_bundle().cloned(),
+            bundle.map(sapling_crypto::Bundle::compress),
+            data.orchard_bundle().cloned(),
+            data.ironwood_bundle().cloned(),
+        );
+        Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
+    }
+
+    /// Rebuild this transaction with a replaced Sprout bundle (recomputes txid).
+    #[cfg(any(test, feature = "proptest-impl"))]
+    pub fn with_sprout_bundle(self, bundle: Option<crate::sprout::JoinSplitData>) -> Self {
+        let data = &*self.0;
+        let tx_data = compat::compressed_data_from_parts(
+            data.version(),
+            data.consensus_branch_id(),
+            data.lock_time(),
+            data.expiry_height(),
+            data.transparent_bundle().cloned(),
+            bundle,
+            data.sapling_bundle().cloned(),
+            data.orchard_bundle().cloned(),
+            data.ironwood_bundle().cloned(),
+        );
+        Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))
+    }
+
     /// Build a V4 (Canopy) transaction with a Sprout JoinSplit bundle, for tests.
     ///
     /// Transparent and Sapling components are empty.
