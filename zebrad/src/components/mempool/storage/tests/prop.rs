@@ -10,6 +10,9 @@ use proptest_derive::Arbitrary;
 use zebra_chain::{
     amount::Amount,
     fmt::{DisplayToDebug, SummaryDebug},
+    orchard,
+    parameters::NetworkUpgrade,
+    sapling, sprout,
     transaction::{self, Transaction, UnminedTxId, VerifiedUnminedTx},
     transparent, LedgerState,
 };
@@ -566,12 +569,16 @@ impl SpendConflictTestInput {
 #[derive(Arbitrary, Clone, Debug)]
 enum SpendConflictForTransactionV4 {
     Transparent(Box<TransparentSpendConflict>),
+    Sprout(Box<SproutSpendConflict>),
+    Sapling(Box<SaplingSpendConflict>),
 }
 
 /// A spend conflict valid for V5 transactions.
 #[derive(Arbitrary, Clone, Debug)]
 enum SpendConflictForTransactionV5 {
     Transparent(Box<TransparentSpendConflict>),
+    Sapling(Box<SaplingSpendConflict>),
+    Orchard(Box<OrchardSpendConflict>),
 }
 
 /// A conflict caused by spending the same UTXO.
@@ -590,6 +597,9 @@ impl SpendConflictForTransactionV4 {
                 transparent_conflict.apply_to(&mut inputs);
                 *transaction_v4 = transaction_v4.clone().with_transparent_inputs(inputs);
             }
+            Sprout(sprout_conflict) => sprout_conflict.apply_to(transaction_v4),
+            // v4 spends carry their own anchors
+            Sapling(sapling_conflict) => sapling_conflict.apply_to(transaction_v4, false),
         }
     }
 }
@@ -604,7 +614,110 @@ impl SpendConflictForTransactionV5 {
                 transparent_conflict.apply_to(&mut inputs);
                 *transaction_v5 = transaction_v5.clone().with_transparent_inputs(inputs);
             }
+            // v5 bundles share one anchor across every spend
+            Sapling(sapling_conflict) => sapling_conflict.apply_to(transaction_v5, true),
+            Orchard(orchard_conflict) => orchard_conflict.apply_to(transaction_v5),
         }
+    }
+}
+
+/// A conflict caused by revealing the same Sprout nullifier.
+#[derive(Arbitrary, Clone, Debug)]
+struct SproutSpendConflict {
+    #[proptest(strategy = "sprout::arbitrary::joinsplit_data(true)")]
+    new_joinsplit_data: sprout::JoinSplitData,
+}
+
+/// A conflict caused by revealing the same Sapling nullifier.
+#[derive(Arbitrary, Clone, Debug)]
+struct SaplingSpendConflict {
+    #[proptest(strategy = "sapling::arbitrary::spend()")]
+    new_spend: sapling::arbitrary::Spend,
+
+    #[proptest(strategy = "sapling::arbitrary::bundle(true)")]
+    fallback_bundle: sapling::arbitrary::Bundle,
+}
+
+/// A conflict caused by revealing the same Orchard nullifier.
+#[derive(Arbitrary, Clone, Debug)]
+struct OrchardSpendConflict {
+    #[proptest(strategy = "orchard::arbitrary::bundle(NetworkUpgrade::Nu5)")]
+    new_bundle: orchard::arbitrary::Bundle,
+}
+
+impl SproutSpendConflict {
+    /// Give `transaction` a JoinSplit revealing this conflict's nullifier.
+    fn apply_to(self, transaction: &mut Transaction) {
+        let conflict = self.new_joinsplit_data.joinsplits[0].clone();
+        let bundle = match transaction.sprout_bundle() {
+            Some(existing) => {
+                let mut joinsplits = existing.joinsplits.clone();
+                joinsplits[0] =
+                    sprout::arbitrary::with_nullifiers(&joinsplits[0], *conflict.nullifiers());
+                sprout::JoinSplitData {
+                    joinsplits,
+                    ..existing.clone()
+                }
+            }
+            None => self.new_joinsplit_data,
+        };
+
+        *transaction = transaction.clone().with_sprout_bundle(Some(bundle));
+    }
+}
+
+impl SaplingSpendConflict {
+    /// Give `transaction` a Sapling spend revealing this conflict's nullifier.
+    ///
+    /// `shared_anchor` = re-anchor onto the bundle's anchor (v5+)
+    fn apply_to(self, transaction: &mut Transaction, shared_anchor: bool) {
+        let bundle = match transaction.sapling_bundle() {
+            Some(bundle) => bundle
+                .clone()
+                .decompress()
+                .expect("arbitrary Sapling bundles decompress"),
+            None => self.fallback_bundle,
+        };
+
+        let mut spends = bundle.shielded_spends().to_vec();
+        let new_spend = match spends.first() {
+            Some(spend) if shared_anchor => {
+                sapling::arbitrary::with_anchor(&self.new_spend, *spend.anchor())
+            }
+            _ => self.new_spend,
+        };
+        spends.push(new_spend);
+
+        let bundle = sapling::arbitrary::Bundle::from_parts(
+            spends,
+            bundle.shielded_outputs().to_vec(),
+            *bundle.value_balance(),
+            *bundle.authorization(),
+        )
+        .expect("the bundle has a spend");
+
+        *transaction = transaction.clone().with_sapling_bundle(Some(bundle));
+    }
+}
+
+impl OrchardSpendConflict {
+    /// Give `transaction` an Orchard action revealing this conflict's nullifier.
+    fn apply_to(self, transaction: &mut Transaction) {
+        let conflict_nullifier = *self.new_bundle.actions().first().nullifier();
+        let bundle = match transaction.orchard_bundle() {
+            Some(bundle) => {
+                let bundle = bundle
+                    .clone()
+                    .decompress()
+                    .expect("arbitrary Orchard bundles decompress");
+                let mut actions: Vec<_> = bundle.actions().iter().cloned().collect();
+                actions[0] = orchard::arbitrary::with_nullifier(&actions[0], conflict_nullifier);
+                orchard::arbitrary::with_actions(&bundle, actions)
+            }
+            None => self.new_bundle,
+        };
+
+        *transaction = transaction.clone().with_orchard_bundle(Some(bundle));
     }
 }
 
