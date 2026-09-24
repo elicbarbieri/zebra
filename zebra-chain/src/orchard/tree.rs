@@ -17,15 +17,10 @@ use std::{
     io,
 };
 
-use bitvec::prelude::*;
+use ::orchard::tree::MerkleHashOrchard;
 use halo2::pasta::{group::ff::PrimeField, pallas};
-use hex::ToHex;
-use incrementalmerkletree::{frontier::NonEmptyFrontier, Hashable};
-use lazy_static::lazy_static;
+use incrementalmerkletree::frontier::NonEmptyFrontier;
 use thiserror::Error;
-use zcash_primitives::merkle_tree::HashSer;
-
-use super::sinsemilla::*;
 
 use crate::{
     serialization::{
@@ -38,65 +33,9 @@ pub mod legacy;
 use legacy::LegacyNoteCommitmentTree;
 
 /// The type that is used to update the note commitment tree.
-///
-/// Unfortunately, this is not the same as `orchard::NoteCommitment`.
-pub type NoteCommitmentUpdate = pallas::Base;
+pub type NoteCommitmentUpdate = ::orchard::note::ExtractedNoteCommitment;
 
 pub(super) const MERKLE_DEPTH: u8 = 32;
-
-/// MerkleCRH^Orchard Hash Function
-///
-/// Used to hash incremental Merkle tree hash values for Orchard.
-///
-/// MerkleCRH^Orchard: {0..MerkleDepth^Orchard − 1} × P𝑥 × P𝑥 → P𝑥
-///
-/// MerkleCRH^Orchard(layer, left, right) := 0 if hash == ⊥; hash otherwise
-///
-/// where hash = SinsemillaHash("z.cash:Orchard-MerkleCRH", l || left || right),
-/// l = I2LEBSP_10(MerkleDepth^Orchard − 1 − layer),  and left, right, and
-/// the output are the x-coordinates of Pallas affine points.
-///
-/// <https://zips.z.cash/protocol/protocol.pdf#orchardmerklecrh>
-/// <https://zips.z.cash/protocol/protocol.pdf#constants>
-fn merkle_crh_orchard(layer: u8, left: pallas::Base, right: pallas::Base) -> pallas::Base {
-    let mut s = bitvec![u8, Lsb0;];
-
-    // Prefix: l = I2LEBSP_10(MerkleDepth^Orchard − 1 − layer)
-    let l = MERKLE_DEPTH - 1 - layer;
-    s.extend_from_bitslice(&BitArray::<_, Lsb0>::from([l, 0])[0..10]);
-    s.extend_from_bitslice(&BitArray::<_, Lsb0>::from(left.to_repr())[0..255]);
-    s.extend_from_bitslice(&BitArray::<_, Lsb0>::from(right.to_repr())[0..255]);
-
-    match sinsemilla_hash(b"z.cash:Orchard-MerkleCRH", &s) {
-        Some(h) => h,
-        None => pallas::Base::zero(),
-    }
-}
-
-lazy_static! {
-    /// List of "empty" Orchard note commitment nodes, one for each layer.
-    ///
-    /// The list is indexed by the layer number (0: root; MERKLE_DEPTH: leaf).
-    ///
-    /// <https://zips.z.cash/protocol/protocol.pdf#constants>
-    pub(super) static ref EMPTY_ROOTS: Vec<pallas::Base> = {
-        // The empty leaf node. This is layer 32.
-        let mut v = vec![NoteCommitmentTree::uncommitted()];
-
-        // Starting with layer 31 (the first internal layer, after the leaves),
-        // generate the empty roots up to layer 0, the root.
-        for layer in (0..MERKLE_DEPTH).rev()
-        {
-            // The vector is generated from the end, pushing new nodes to its beginning.
-            // For this reason, the layer below is v[0].
-            let next = merkle_crh_orchard(layer, v[0], v[0]);
-            v.insert(0, next);
-        }
-
-        v
-
-    };
-}
 
 /// Orchard note commitment tree root node hash.
 ///
@@ -148,6 +87,12 @@ impl PartialEq for Root {
     }
 }
 
+impl From<MerkleHashOrchard> for Root {
+    fn from(node: MerkleHashOrchard) -> Self {
+        Self::try_from(node.to_bytes()).expect("MerkleHashOrchard holds a canonical pallas::Base")
+    }
+}
+
 impl TryFrom<[u8; 32]> for Root {
     type Error = SerializationError;
 
@@ -175,153 +120,6 @@ impl ZcashSerialize for Root {
 impl ZcashDeserialize for Root {
     fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
         Self::try_from(reader.read_32_bytes()?)
-    }
-}
-
-/// A node of the Orchard Incremental Note Commitment Tree.
-#[derive(Copy, Clone, Eq, PartialEq, Default)]
-pub struct Node(pallas::Base);
-
-impl Node {
-    /// Calls `to_repr()` on inner value.
-    pub fn to_repr(&self) -> [u8; 32] {
-        self.0.to_repr()
-    }
-
-    /// Return the node bytes in big-endian byte-order suitable for printing out byte by byte.
-    ///
-    /// `zcashd`'s `z_getsubtreesbyindex` does not reverse the byte order of subtree roots.
-    pub fn bytes_in_display_order(&self) -> [u8; 32] {
-        self.to_repr()
-    }
-}
-
-impl TryFrom<&[u8]> for Node {
-    type Error = &'static str;
-
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        <[u8; 32]>::try_from(bytes)
-            .map_err(|_| "wrong byte slice len")?
-            .try_into()
-    }
-}
-
-impl TryFrom<[u8; 32]> for Node {
-    type Error = &'static str;
-
-    fn try_from(bytes: [u8; 32]) -> Result<Self, Self::Error> {
-        Option::<pallas::Base>::from(pallas::Base::from_repr(bytes))
-            .map(Node)
-            .ok_or("invalid Pallas field element")
-    }
-}
-
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.encode_hex::<String>())
-    }
-}
-
-impl fmt::Debug for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_tuple("orchard::Node")
-            .field(&self.encode_hex::<String>())
-            .finish()
-    }
-}
-
-impl ToHex for &Node {
-    fn encode_hex<T: FromIterator<char>>(&self) -> T {
-        self.bytes_in_display_order().encode_hex()
-    }
-
-    fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
-        self.bytes_in_display_order().encode_hex_upper()
-    }
-}
-
-impl ToHex for Node {
-    fn encode_hex<T: FromIterator<char>>(&self) -> T {
-        (&self).encode_hex()
-    }
-
-    fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
-        (&self).encode_hex_upper()
-    }
-}
-
-/// Required to serialize [`NoteCommitmentTree`]s in a format compatible with `zcashd`.
-///
-/// Zebra stores Orchard note commitment trees as [`Frontier`][1]s while the
-/// [`z_gettreestate`][2] RPC requires [`CommitmentTree`][3]s. Implementing
-/// [`HashSer`] for [`Node`]s allows the conversion.
-///
-/// [1]: incrementalmerkletree::frontier::Frontier
-/// [2]: https://zcash.github.io/rpc/z_gettreestate.html
-/// [3]: incrementalmerkletree::frontier::CommitmentTree
-impl HashSer for Node {
-    fn read<R: io::Read>(mut reader: R) -> io::Result<Self> {
-        let mut repr = [0u8; 32];
-        reader.read_exact(&mut repr)?;
-        let maybe_node = pallas::Base::from_repr(repr).map(Self);
-
-        <Option<_>>::from(maybe_node).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Non-canonical encoding of Pallas base field value.",
-            )
-        })
-    }
-
-    fn write<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
-        writer.write_all(&self.0.to_repr())
-    }
-}
-
-impl Hashable for Node {
-    fn empty_leaf() -> Self {
-        Self(NoteCommitmentTree::uncommitted())
-    }
-
-    /// Combine two nodes to generate a new node in the given level.
-    /// Level 0 is the layer above the leaves (layer 31).
-    /// Level 31 is the root (layer 0).
-    fn combine(level: incrementalmerkletree::Level, a: &Self, b: &Self) -> Self {
-        let layer = MERKLE_DEPTH - 1 - u8::from(level);
-        Self(merkle_crh_orchard(layer, a.0, b.0))
-    }
-
-    /// Return the node for the level below the given level. (A quirk of the API)
-    fn empty_root(level: incrementalmerkletree::Level) -> Self {
-        let layer_below = usize::from(MERKLE_DEPTH) - usize::from(level);
-        Self(EMPTY_ROOTS[layer_below])
-    }
-}
-
-impl From<pallas::Base> for Node {
-    fn from(x: pallas::Base) -> Self {
-        Node(x)
-    }
-}
-
-impl serde::Serialize for Node {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.0.to_repr().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Node {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let bytes = <[u8; 32]>::deserialize(deserializer)?;
-        Option::<pallas::Base>::from(pallas::Base::from_repr(bytes))
-            .map(Node)
-            .ok_or_else(|| serde::de::Error::custom("invalid Pallas field element"))
     }
 }
 
@@ -356,7 +154,7 @@ pub struct NoteCommitmentTree {
     /// <https://zips.z.cash/protocol/protocol.pdf#merkletree>
     ///
     /// Note: MerkleDepth^Orchard = MERKLE_DEPTH = 32.
-    inner: incrementalmerkletree::frontier::Frontier<Node, MERKLE_DEPTH>,
+    inner: incrementalmerkletree::frontier::Frontier<MerkleHashOrchard, MERKLE_DEPTH>,
 
     /// A cached root of the tree.
     ///
@@ -386,7 +184,7 @@ impl NoteCommitmentTree {
     /// Returns an error if the tree is full.
     #[allow(clippy::unwrap_in_result)]
     pub fn append(&mut self, cm_x: NoteCommitmentUpdate) -> Result<(), NoteCommitmentTreeError> {
-        if self.inner.append(cm_x.into()) {
+        if self.inner.append(MerkleHashOrchard::from_cmx(&cm_x)) {
             // Invalidate cached root
             let cached_root = self
                 .cached_root
@@ -402,7 +200,7 @@ impl NoteCommitmentTree {
     }
 
     /// Returns frontier of non-empty tree, or `None` if the tree is empty.
-    fn frontier(&self) -> Option<&NonEmptyFrontier<Node>> {
+    fn frontier(&self) -> Option<&NonEmptyFrontier<MerkleHashOrchard>> {
         self.inner.value()
     }
 
@@ -547,7 +345,9 @@ impl NoteCommitmentTree {
     }
 
     /// Returns subtree index and root if the most recently appended leaf completes the subtree
-    pub fn completed_subtree_index_and_root(&self) -> Option<(NoteCommitmentSubtreeIndex, Node)> {
+    pub fn completed_subtree_index_and_root(
+        &self,
+    ) -> Option<(NoteCommitmentSubtreeIndex, MerkleHashOrchard)> {
         if !self.is_complete_subtree() {
             return None;
         }
@@ -595,22 +395,13 @@ impl NoteCommitmentTree {
 
     /// Calculates and returns the current root of the tree, ignoring any caching.
     pub fn recalculate_root(&self) -> Root {
-        Root(self.inner.root().0)
+        Root::from(self.inner.root())
     }
 
     /// Get the Pallas-based Sinsemilla hash / root node of this merkle tree of
     /// note commitments.
     pub fn hash(&self) -> [u8; 32] {
         self.root().into()
-    }
-
-    /// An as-yet unused Orchard note commitment tree leaf node.
-    ///
-    /// Distinct for Orchard, a distinguished hash value of:
-    ///
-    /// Uncommitted^Orchard = I2LEBSP_l_MerkleOrchard(2)
-    pub fn uncommitted() -> pallas::Base {
-        pallas::Base::one().double()
     }
 
     /// Count of note commitments added to the tree.
@@ -693,9 +484,9 @@ impl PartialEq for NoteCommitmentTree {
     }
 }
 
-impl From<Vec<pallas::Base>> for NoteCommitmentTree {
+impl From<Vec<NoteCommitmentUpdate>> for NoteCommitmentTree {
     /// Compute the tree from a whole bunch of note commitments at once.
-    fn from(values: Vec<pallas::Base>) -> Self {
+    fn from(values: Vec<NoteCommitmentUpdate>) -> Self {
         let mut tree = Self::default();
 
         if values.is_empty() {

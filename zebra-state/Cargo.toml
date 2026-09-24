@@ -70,6 +70,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "sync", "tracing", "m
 tower = { workspace = true, features = ["buffer", "util"] }
 tracing = { workspace = true }
 
+orchard = { workspace = true }
 sapling-crypto = { workspace = true }
 
 # elasticsearch specific dependencies.

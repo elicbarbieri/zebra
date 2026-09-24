@@ -29,7 +29,6 @@ use zebra_chain::{
     block::{Block, Hash},
     chain_sync_status::MockSyncStatus,
     chain_tip::mock::MockChainTip,
-    orchard,
     parameters::{
         testnet::{self, ConfiguredActivationHeights, Parameters},
         Network::{self, Mainnet},
@@ -685,7 +684,8 @@ async fn test_mocked_rpc_response_data_for_network(network: &Network) {
 
     // Mock the data for the response.
     let mut subtrees = BTreeMap::new();
-    let subtree_root = orchard::tree::Node::default();
+    let subtree_root =
+        ::orchard::tree::MerkleHashOrchard::from_bytes(&[0; 32]).expect("zero is canonical");
 
     for i in 0..2u16 {
         let subtree = NoteCommitmentSubtreeData::new(Height(i.into()), subtree_root);

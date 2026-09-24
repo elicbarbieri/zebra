@@ -28,7 +28,7 @@ pub struct NoteCommitmentTrees {
     pub orchard: Arc<orchard::tree::NoteCommitmentTree>,
 
     /// The orchard note commitment subtree.
-    pub orchard_subtree: Option<NoteCommitmentSubtree<orchard::tree::Node>>,
+    pub orchard_subtree: Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>>,
 
     /// The ironwood note commitment tree (NU6.3).
     ///
@@ -37,7 +37,7 @@ pub struct NoteCommitmentTrees {
     pub ironwood: Arc<orchard::tree::NoteCommitmentTree>,
 
     /// The ironwood note commitment subtree (NU6.3).
-    pub ironwood_subtree: Option<NoteCommitmentSubtree<orchard::tree::Node>>,
+    pub ironwood_subtree: Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>>,
 }
 
 /// Note commitment tree errors.
@@ -234,7 +234,10 @@ impl NoteCommitmentTrees {
     ) -> Result<
         (
             Arc<orchard::tree::NoteCommitmentTree>,
-            Option<(NoteCommitmentSubtreeIndex, orchard::tree::Node)>,
+            Option<(
+                NoteCommitmentSubtreeIndex,
+                ::orchard::tree::MerkleHashOrchard,
+            )>,
         ),
         NoteCommitmentTreeError,
     > {
@@ -275,7 +278,10 @@ impl NoteCommitmentTrees {
     ) -> Result<
         (
             Arc<orchard::tree::NoteCommitmentTree>,
-            Option<(NoteCommitmentSubtreeIndex, orchard::tree::Node)>,
+            Option<(
+                NoteCommitmentSubtreeIndex,
+                ::orchard::tree::MerkleHashOrchard,
+            )>,
         ),
         NoteCommitmentTreeError,
     > {
