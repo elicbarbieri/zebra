@@ -35,32 +35,3 @@ impl From<orchard::Nullifier> for Nullifier {
         Self(nullifier)
     }
 }
-
-/// Ironwood shielded data: a v6 Orchard-protocol bundle committed to the Ironwood pool.
-///
-/// Wraps [`orchard::ShieldedDataV6`] (the v6 Orchard bundle shape). The Ironwood bundle shares the
-/// exact wire format of the v6 Orchard bundle, but is the only pool that permits the
-/// `enableCrossAddress` flag (bit 2), which the Orchard pool reserves regardless of tx version. This
-/// newtype keeps the two type-distinct so they cannot be accidentally interchanged, and so the
-/// Ironwood bundle can commit into a separate note commitment tree and nullifier set.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ShieldedData(orchard::ShieldedDataV6);
-
-impl ShieldedData {
-    /// Wraps a v6 Orchard-protocol bundle as Ironwood shielded data.
-    pub fn new(shielded_data: orchard::ShieldedDataV6) -> Self {
-        Self(shielded_data)
-    }
-
-    /// Returns the inner Orchard [`ShieldedData`](orchard::ShieldedData) backing this Ironwood
-    /// bundle (the v6 Orchard bundle shape that Ironwood reuses).
-    pub fn data(&self) -> &orchard::ShieldedData {
-        self.0.data()
-    }
-
-    /// Returns the inner Orchard [`ShieldedData`](orchard::ShieldedData) backing this Ironwood
-    /// bundle, mutably.
-    pub fn data_mut(&mut self) -> &mut orchard::ShieldedData {
-        self.0.data_mut()
-    }
-}

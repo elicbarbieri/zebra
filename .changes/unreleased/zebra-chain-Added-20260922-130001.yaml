@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: Added
+body: '`proptest-impl`: `sapling::arbitrary::{bundle, spend, with_spends, with_nullifier}`, `orchard::arbitrary::{bundle, action, with_actions, with_nullifier}` (upstream bundle strategies) and `Transaction::test_v4_with_sapling`; `From<orchard::note::Nullifier>` for `orchard::Nullifier`.'
+time: 2026-09-22T13:00:01.000000000Z

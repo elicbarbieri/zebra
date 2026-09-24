@@ -9,12 +9,9 @@ use proptest_derive::Arbitrary;
 
 use zebra_chain::{
     amount::Amount,
-    at_least_one,
     fmt::{DisplayToDebug, SummaryDebug},
-    orchard,
     primitives::{Groth16Proof, ZkSnarkProof},
-    sapling,
-    serialization::{AtLeastOne, ZcashDeserialize},
+    serialization::ZcashDeserialize,
     sprout,
     transaction::{self, JoinSplitData, Transaction, UnminedTxId, VerifiedUnminedTx},
     transparent, LedgerState,
@@ -553,8 +550,6 @@ impl SpendConflictTestInput {
 
         Self::remove_transparent_conflicts(&mut first, &mut second);
         Self::remove_sprout_conflicts(&mut first, &mut second);
-        Self::remove_sapling_conflicts(&mut first, &mut second);
-        Self::remove_orchard_conflicts(&mut first, &mut second);
 
         standardize_transaction(&mut first.0);
         standardize_transaction(&mut second.0);
@@ -657,102 +652,6 @@ impl SpendConflictTestInput {
             *maybe_joinsplit_data = None;
         }
     }
-
-    /// Find identical Sapling nullifiers revealed by both transactions, then remove the spends
-    /// that contain them from both transactions.
-    ///
-    /// NOTE: This function is not fully implemented with the new Transaction type.
-    /// The new Transaction wraps librustzcash and doesn't support direct mutation of shielded data.
-    fn remove_sapling_conflicts(_first: &mut Transaction, _second: &mut Transaction) {
-        // TODO: Reimplement when Transaction API supports removing individual sapling spends.
-        // For now, this is a no-op since proptest-generated arbitrary transactions
-        // from the new API are transparent-only and have no sapling data.
-    }
-
-    /// Remove from a transaction's [`sapling::ShieldedData`] the spends that contain nullifiers
-    /// present in the `conflicts` set.
-    ///
-    /// This may clear the entire shielded data.
-    #[allow(dead_code)] // Only used by code paths that require Transaction mutation support
-    fn remove_sapling_transfers_with_conflicts<A>(
-        maybe_shielded_data: &mut Option<sapling::ShieldedData<A>>,
-        conflicts: &HashSet<sapling::Nullifier>,
-    ) where
-        A: sapling::AnchorVariant + Clone,
-    {
-        if let Some(shielded_data) = maybe_shielded_data.take() {
-            match shielded_data.transfers {
-                sapling::TransferData::JustOutputs { .. } => {
-                    *maybe_shielded_data = Some(shielded_data)
-                }
-
-                sapling::TransferData::SpendsAndMaybeOutputs {
-                    shared_anchor,
-                    spends,
-                    maybe_outputs,
-                } => {
-                    let updated_spends: Vec<_> = spends
-                        .to_vec()
-                        .into_iter()
-                        .filter(|spend| !conflicts.contains(&spend.nullifier))
-                        .collect();
-
-                    if let Ok(spends) = AtLeastOne::try_from(updated_spends) {
-                        *maybe_shielded_data = Some(sapling::ShieldedData {
-                            transfers: sapling::TransferData::SpendsAndMaybeOutputs {
-                                shared_anchor,
-                                spends,
-                                maybe_outputs,
-                            },
-                            ..shielded_data
-                        });
-                    } else if let Ok(outputs) = AtLeastOne::try_from(maybe_outputs) {
-                        *maybe_shielded_data = Some(sapling::ShieldedData {
-                            transfers: sapling::TransferData::JustOutputs { outputs },
-                            ..shielded_data
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    /// Find identical Orchard nullifiers revealed by both transactions, then remove the actions
-    /// that contain them from both transactions.
-    ///
-    /// NOTE: This function is not fully implemented with the new Transaction type.
-    /// The new Transaction wraps librustzcash and doesn't support direct mutation of shielded data.
-    fn remove_orchard_conflicts(_first: &mut Transaction, _second: &mut Transaction) {
-        // TODO: Reimplement when Transaction API supports removing individual orchard actions.
-        // For now, this is a no-op since proptest-generated arbitrary transactions
-        // from the new API are transparent-only and have no orchard data.
-    }
-
-    /// Remove from a transaction's [`orchard::ShieldedData`] the actions that contain nullifiers
-    /// present in the `conflicts` set.
-    ///
-    /// This may clear the entire shielded data.
-    #[allow(dead_code)] // Only used by code paths that require Transaction mutation support
-    fn remove_orchard_actions_with_conflicts(
-        maybe_shielded_data: &mut Option<orchard::ShieldedData>,
-        conflicts: &HashSet<orchard::Nullifier>,
-    ) {
-        if let Some(shielded_data) = maybe_shielded_data.take() {
-            let updated_actions: Vec<_> = shielded_data
-                .actions
-                .to_vec()
-                .into_iter()
-                .filter(|action| !conflicts.contains(&action.action.nullifier))
-                .collect();
-
-            if let Ok(actions) = AtLeastOne::try_from(updated_actions) {
-                *maybe_shielded_data = Some(orchard::ShieldedData {
-                    actions,
-                    ..shielded_data
-                });
-            }
-        }
-    }
 }
 
 /// A spend conflict valid for V4 transactions.
@@ -761,7 +660,6 @@ impl SpendConflictTestInput {
 enum SpendConflictForTransactionV4 {
     Transparent(Box<TransparentSpendConflict>),
     Sprout(Box<SproutSpendConflict>),
-    Sapling(Box<SaplingSpendConflict<sapling::PerSpendAnchor>>),
 }
 
 /// A spend conflict valid for V5 transactions.
@@ -769,8 +667,6 @@ enum SpendConflictForTransactionV4 {
 #[derive(Arbitrary, Clone, Debug)]
 enum SpendConflictForTransactionV5 {
     Transparent(Box<TransparentSpendConflict>),
-    Sapling(Box<SaplingSpendConflict<sapling::SharedAnchor>>),
-    Orchard(Box<OrchardSpendConflict>),
 }
 
 /// A conflict caused by spending the same UTXO.
@@ -784,22 +680,6 @@ struct TransparentSpendConflict {
 #[derive(Arbitrary, Clone, Debug)]
 struct SproutSpendConflict {
     new_joinsplit_data: DisplayToDebug<transaction::JoinSplitData<Groth16Proof>>,
-}
-
-/// A conflict caused by revealing the same Sapling nullifier.
-#[allow(dead_code)] // Fields only used by code paths that require Transaction mutation support
-#[derive(Clone, Debug)]
-struct SaplingSpendConflict<A: sapling::AnchorVariant + Clone> {
-    new_spend: DisplayToDebug<sapling::Spend<A>>,
-    new_shared_anchor: A::Shared,
-    fallback_shielded_data: DisplayToDebug<sapling::ShieldedData<A>>,
-}
-
-/// A conflict caused by revealing the same Orchard nullifier.
-#[allow(dead_code)] // Fields only used by code paths that require Transaction mutation support
-#[derive(Arbitrary, Clone, Debug)]
-struct OrchardSpendConflict {
-    new_shielded_data: DisplayToDebug<orchard::ShieldedData>,
 }
 
 impl SpendConflictForTransactionV4 {
@@ -817,7 +697,7 @@ impl SpendConflictForTransactionV4 {
                 transparent_conflict.apply_to(&mut inputs);
                 *transaction_v4 = transaction_v4.clone().with_transparent_inputs(inputs);
             }
-            Sprout(_) | Sapling(_) => {
+            Sprout(_) => {
                 // TODO: Reimplement when Transaction API supports mutating shielded data.
                 // Sprout and Sapling conflicts cannot be applied to the new transparent-only transactions.
             }
@@ -839,10 +719,6 @@ impl SpendConflictForTransactionV5 {
                 let mut inputs = transaction_v5.inputs();
                 transparent_conflict.apply_to(&mut inputs);
                 *transaction_v5 = transaction_v5.clone().with_transparent_inputs(inputs);
-            }
-            Sapling(_) | Orchard(_) => {
-                // TODO: Reimplement when Transaction API supports mutating shielded data.
-                // Sapling and Orchard conflicts cannot be applied to the new transparent-only transactions.
             }
         }
     }
@@ -874,94 +750,6 @@ impl SproutSpendConflict {
                 self.new_joinsplit_data.first.nullifiers[0];
         } else {
             *joinsplit_data = Some(self.new_joinsplit_data.0);
-        }
-    }
-}
-
-/// Generate arbitrary [`SaplingSpendConflict`]s.
-///
-/// This had to be implemented manually because of the constraints required as a consequence of the
-/// generic type parameter.
-impl<A> Arbitrary for SaplingSpendConflict<A>
-where
-    A: sapling::AnchorVariant + Clone + Debug + 'static,
-    A::Shared: Arbitrary,
-    sapling::Spend<A>: Arbitrary,
-    sapling::TransferData<A>: Arbitrary,
-{
-    type Parameters = ();
-
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        any::<(sapling::Spend<A>, A::Shared, sapling::ShieldedData<A>)>()
-            .prop_map(|(new_spend, new_shared_anchor, fallback_shielded_data)| {
-                SaplingSpendConflict {
-                    new_spend: new_spend.into(),
-                    new_shared_anchor,
-                    fallback_shielded_data: fallback_shielded_data.into(),
-                }
-            })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-#[allow(dead_code)] // Only used by code paths that require Transaction mutation support
-impl<A: sapling::AnchorVariant + Clone> SaplingSpendConflict<A> {
-    /// Apply a Sapling spend conflict.
-    ///
-    /// Ensures that a transaction's `sapling_shielded_data` has a nullifier used to represent a
-    /// conflict. If the transaction already has Sapling shielded data, a new spend is added with
-    /// the new nullifier. Otherwise, a fallback instance of Sapling shielded data is inserted in
-    /// the transaction, and then the spend is added.
-    ///
-    /// The transaction will then conflict with any other transaction with the same new nullifier.
-    pub fn apply_to(self, sapling_shielded_data: &mut Option<sapling::ShieldedData<A>>) {
-        use sapling::TransferData::*;
-
-        let shielded_data = sapling_shielded_data.get_or_insert(self.fallback_shielded_data.0);
-
-        match &mut shielded_data.transfers {
-            SpendsAndMaybeOutputs { ref mut spends, .. } => {
-                let mut spends_vec = spends.as_slice().to_vec();
-                spends_vec.push(self.new_spend.0);
-                *spends = AtLeastOne::from_vec(spends_vec)
-                    .expect("pushing one element never breaks at least one constraints");
-            }
-            JustOutputs { ref mut outputs } => {
-                let new_outputs = outputs.clone();
-
-                shielded_data.transfers = SpendsAndMaybeOutputs {
-                    shared_anchor: self.new_shared_anchor,
-                    spends: at_least_one![self.new_spend.0],
-                    maybe_outputs: new_outputs.to_vec(),
-                };
-            }
-        }
-    }
-}
-
-#[allow(dead_code)] // Only used by code paths that require Transaction mutation support
-impl OrchardSpendConflict {
-    /// Apply a Orchard spend conflict.
-    ///
-    /// Ensures that a transaction's `orchard_shielded_data` has a nullifier used to represent a
-    /// conflict. If the transaction already has Orchard shielded data, a new action is added with
-    /// the new nullifier. Otherwise, a fallback instance of Orchard shielded data that contains
-    /// the new action is inserted in the transaction.
-    ///
-    /// The transaction will then conflict with any other transaction with the same new nullifier.
-    pub fn apply_to(self, orchard_shielded_data: &mut Option<orchard::ShieldedData>) {
-        if let Some(shielded_data) = orchard_shielded_data.as_mut() {
-            shielded_data
-                .actions
-                .iter_mut()
-                .next()
-                .unwrap()
-                .action
-                .nullifier = self.new_shielded_data.actions.first().action.nullifier;
-        } else {
-            *orchard_shielded_data = Some(self.new_shielded_data.0);
         }
     }
 }

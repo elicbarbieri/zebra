@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: 'Removed the vendored Sapling and Orchard shielded-data layer, which no production path used after `Transaction` moved onto `zcash_primitives`: `sapling::{Spend, Output, ShieldedData, TransferData, AnchorVariant, PerSpendAnchor, SharedAnchor, FieldNotPresent, ValueCommitment, CommitmentRandomness, Note, EncryptedNote, WrappedNoteKey, Diversifier, keys}`, `orchard::{Action, AuthorizedAction, ShieldedData, ShieldedDataV6, Flags, FlagsV6, Address, Note, NoteCommitment, ValueCommitment, CommitmentRandomness, EncryptedNote, WrappedNoteKey, Diversifier, keys, shielded_data}`, `ironwood::ShieldedData`, `transaction::FieldNotPresent`, and the `error::{RandError, NoteError, NoteCommitmentError, KeyError, AddressError}` types they used. Use the `sapling_crypto` and `orchard` bundle types that `Transaction`''s accessors return.'
+time: 2026-09-22T13:00:00.000000000Z
