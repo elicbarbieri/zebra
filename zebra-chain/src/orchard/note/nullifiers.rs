@@ -32,6 +32,13 @@ impl TryFrom<[u8; 32]> for Nullifier {
     }
 }
 
+impl From<::orchard::note::Nullifier> for Nullifier {
+    fn from(nullifier: ::orchard::note::Nullifier) -> Self {
+        Self::try_from(nullifier.to_bytes())
+            .expect("orchard::note::Nullifier holds a canonical pallas::Base")
+    }
+}
+
 impl PartialEq for Nullifier {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
