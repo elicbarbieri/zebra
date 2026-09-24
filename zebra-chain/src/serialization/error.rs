@@ -102,6 +102,7 @@ impl From<crate::Error> for SerializationError {
             crate::Error::Conversion(_) => {
                 Self::Parse("Zebra's type could not be converted to its librustzcash equivalent")
             }
+            crate::Error::InvalidPointEncoding(_) => Self::Parse("invalid shielded point encoding"),
         }
     }
 }

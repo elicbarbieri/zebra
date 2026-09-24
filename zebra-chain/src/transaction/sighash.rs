@@ -100,6 +100,21 @@ impl SigHasher {
         })
     }
 
+    /// [`SigHasher::new`] reusing points [`Transaction::decompress`] already checked
+    pub fn from_decompressed(
+        decompressed: zcash_primitives::transaction::Transaction,
+        nu: NetworkUpgrade,
+        all_previous_outputs: Arc<Vec<transparent::Output>>,
+    ) -> Result<Self, Error> {
+        Ok(SigHasher {
+            precomputed_tx_data: PrecomputedTxData::from_decompressed(
+                decompressed,
+                nu,
+                all_previous_outputs,
+            )?,
+        })
+    }
+
     /// Calculate the sighash for the current transaction.
     ///
     /// # Details

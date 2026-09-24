@@ -3283,7 +3283,10 @@ async fn v5_with_duplicate_orchard_action() {
         // verification, so the verifier short-circuits on the duplication.
         let orig_bundle = tx
             .orchard_bundle()
-            .expect("filter guarantees orchard shielded data");
+            .expect("filter guarantees orchard shielded data")
+            .clone()
+            .decompress()
+            .expect("mined points decompress");
         let first_action = orig_bundle.actions().first().clone();
         let mut actions: Vec<_> = orig_bundle.actions().iter().cloned().collect();
         actions.push(first_action);
@@ -3320,6 +3323,153 @@ async fn v5_with_duplicate_orchard_action() {
             Err(TransactionError::DuplicateOrchardNullifier(
                 duplicate_nullifier
             ))
+        );
+    }
+}
+
+/// Non-canonical cv: parses (no curve math), verifies to `InvalidPointEncoding`
+#[tokio::test]
+async fn v5_with_non_canonical_orchard_cv_is_rejected_as_bad_point() {
+    let _init_guard = zebra_test::init();
+
+    for net in Network::iter() {
+        let tx = v5_transactions(net.block_iter())
+            .rev()
+            .find(|tx| {
+                tx.inputs().is_empty()
+                    && tx.outputs().is_empty()
+                    && tx.sapling_spends_count() == 0
+                    && tx.sapling_outputs().next().is_none()
+                    && tx.joinsplit_count() == 0
+                    && tx.has_orchard_shielded_data()
+            })
+            .expect("V5 tx with only Orchard actions");
+        let height = tx.expiry_height().expect("expiry height");
+
+        let cv = tx
+            .orchard_actions()
+            .next()
+            .expect("filter guarantees an Orchard action")
+            .cv_net()
+            .to_bytes();
+        let mut bytes = tx.zcash_serialize_to_vec().expect("serializes");
+        let at = bytes
+            .windows(32)
+            .position(|window| window == cv)
+            .expect("action 0 cv_net on the wire");
+        bytes[at..at + 32].copy_from_slice(&[0xff; 32]);
+        let tx: Transaction = bytes
+            .zcash_deserialize_into()
+            .expect("parse does no point decompression");
+
+        let verifier = BlockTxVerifier::new(
+            &net,
+            service_fn(|_| async { unreachable!("State service should not be called") }),
+        );
+
+        assert_eq!(
+            verifier
+                .oneshot(BlockRequest {
+                    transaction_hash: tx.hash(),
+                    transaction: Arc::new(tx),
+                    known_utxos: Arc::new(HashMap::new()),
+                    height,
+                    time: DateTime::<Utc>::MAX_UTC,
+                })
+                .await,
+            Err(TransactionError::InvalidPointEncoding(
+                "Orchard bundle: action 0: `cv_net` is not a canonical point encoding".to_string()
+            ))
+        );
+    }
+}
+
+/// Bad point = `InvalidPointEncoding` on every verification path, before any state lookup
+/// (eager parse used to reject it before the verifier ran at all)
+#[tokio::test]
+async fn bad_point_is_rejected_before_any_state_lookup() {
+    let _init_guard = zebra_test::init();
+
+    const BAD_SAPLING_CV: &str =
+        "Sapling bundle: output 0: `cv` is not a canonical encoding of a non-small-order Jubjub point";
+
+    // 0xff.. is no canonical Jubjub encoding; the result parses (no curve arithmetic at parse)
+    let corrupt_first_sapling_output_cv = |tx: &Transaction| -> Transaction {
+        let cv = tx
+            .sapling_outputs()
+            .next()
+            .expect("tx has a Sapling output")
+            .cv()
+            .to_bytes();
+        let mut bytes = tx.zcash_serialize_to_vec().expect("serializes");
+        let at = bytes
+            .windows(32)
+            .position(|window| window == cv)
+            .expect("output 0 cv on the wire");
+        bytes[at..at + 32].copy_from_slice(&[0xff; 32]);
+        bytes
+            .zcash_deserialize_into()
+            .expect("parse does no point decompression")
+    };
+
+    for net in Network::iter() {
+        // Transparent inputs: a UTXO lookup (state call) would follow any check that passed
+        let (height, tx) = transactions_from_blocks(net.block_iter())
+            .find(|(_, tx)| {
+                !tx.is_coinbase()
+                    && !tx.inputs().is_empty()
+                    && tx.sapling_outputs().next().is_some()
+            })
+            .expect("non-coinbase tx with transparent inputs and a Sapling output");
+        let tx = Arc::new(corrupt_first_sapling_output_cv(&tx));
+
+        let block_rsp = BlockTxVerifier::new(
+            &net,
+            service_fn(|_| async { unreachable!("State service should not be called") }),
+        )
+        .oneshot(BlockRequest {
+            transaction_hash: tx.hash(),
+            transaction: tx.clone(),
+            known_utxos: Arc::new(HashMap::new()),
+            height,
+            time: DateTime::<Utc>::MAX_UTC,
+        })
+        .await;
+
+        let mempool_rsp = MempoolTxVerifier::new_for_tests(
+            &net,
+            service_fn(|_| async { unreachable!("State service should not be called") }),
+        )
+        .oneshot(MempoolRequest {
+            transaction: tx.clone().into(),
+            height,
+        })
+        .await;
+
+        let bad_point = TransactionError::InvalidPointEncoding(BAD_SAPLING_CV.to_string());
+        assert_eq!(block_rsp, Err(bad_point.clone()), "{net} block path");
+        assert_eq!(
+            mempool_rsp.map(|_| ()),
+            Err(bad_point.clone()),
+            "{net} mempool path"
+        );
+        // Rejected, never a ban
+        assert_eq!(bad_point.mempool_misbehavior_score(), 0);
+
+        // Coinbase check runs before the tx verifier: same error, not `CoinbaseOutputsNotDecryptable`
+        let (coinbase_height, coinbase) = transactions_from_blocks(net.block_iter())
+            .find(|(height, tx)| {
+                tx.is_coinbase()
+                    && tx.sapling_outputs().next().is_some()
+                    && *height >= NetworkUpgrade::Heartwood.activation_height(&net).unwrap()
+            })
+            .expect("post-Heartwood coinbase with a Sapling output");
+        let coinbase = corrupt_first_sapling_output_cv(&coinbase);
+
+        assert_eq!(
+            check::coinbase_outputs_are_decryptable(&coinbase, &net, coinbase_height),
+            Err(bad_point),
+            "{net} coinbase",
         );
     }
 }

@@ -48,12 +48,14 @@ use crate::{
     Error,
 };
 
-/// A Zcash transaction, wrapping `zcash_primitives::transaction::Transaction`.
+/// A Zcash transaction, wrapping `zcash_primitives::transaction::CompressedTransaction`.
+///
+/// - Sapling/Orchard/Ironwood points stay compressed, unchecked until [`Transaction::decompress`]
 #[derive(Debug)]
-pub struct Transaction(pub(crate) zp_tx::Transaction);
+pub struct Transaction(pub(crate) zp_tx::CompressedTransaction);
 
 impl std::ops::Deref for Transaction {
-    type Target = zp_tx::TransactionData<zp_tx::Authorized>;
+    type Target = zp_tx::CompressedTransactionData;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -61,9 +63,15 @@ impl std::ops::Deref for Transaction {
 }
 
 impl Transaction {
-    /// Access the inner `zcash_primitives::transaction::Transaction`.
-    pub(crate) fn inner(&self) -> &zp_tx::Transaction {
-        &self.0
+    /// Point rules deferred from parse, the only place they are checked
+    ///
+    /// - Sapling: `cv` canonical & not small order, spend `rk` canonical
+    /// - Orchard/Ironwood: `cv_net` & `rk` canonical, `rk` != identity, `epk` canonical & != identity
+    /// - Same rules, same upstream checks as the eager parse (moved, not changed)
+    /// - First failure returned (Sapling → Orchard → Ironwood, description order)
+    /// - Result = upstream type whose constructors enforce these rules (holding one = checked)
+    pub fn decompress(&self) -> Result<zp_tx::Transaction, zp_tx::DecompressionError> {
+        self.0.clone().decompress()
     }
 
     /// Returns the transaction version.
@@ -372,7 +380,7 @@ impl Transaction {
     pub fn sapling_spends(
         &self,
     ) -> impl Iterator<
-        Item = &sapling_crypto::bundle::SpendDescription<sapling_crypto::bundle::Authorized>,
+        Item = &sapling_crypto::bundle::SpendDescriptionBytes<sapling_crypto::bundle::Authorized>,
     > + '_ {
         self.sapling_bundle()
             .into_iter()
@@ -389,7 +397,9 @@ impl Transaction {
     pub fn sapling_outputs(
         &self,
     ) -> impl Iterator<
-        Item = &sapling_crypto::bundle::OutputDescription<sapling_crypto::bundle::GrothProofBytes>,
+        Item = &sapling_crypto::bundle::OutputDescriptionBytes<
+            sapling_crypto::bundle::GrothProofBytes,
+        >,
     > + '_ {
         self.sapling_bundle()
             .into_iter()
@@ -450,7 +460,7 @@ impl Transaction {
     pub fn orchard_actions(
         &self,
     ) -> impl Iterator<
-        Item = &::orchard::Action<
+        Item = &::orchard::ActionBytes<
             <::orchard::bundle::Authorized as ::orchard::bundle::Authorization>::SpendAuth,
         >,
     > + '_ {
@@ -518,7 +528,7 @@ impl Transaction {
     pub fn ironwood_actions(
         &self,
     ) -> impl Iterator<
-        Item = &::orchard::Action<
+        Item = &::orchard::ActionBytes<
             <::orchard::bundle::Authorized as ::orchard::bundle::Authorization>::SpendAuth,
         >,
     > + '_ {
@@ -907,11 +917,11 @@ fn deserialize_and_check<R: std::io::Read>(
 
     let (inner, raw_bytes) = if is_v4 {
         let mut recording = RecordingReader::new(with_header);
-        let inner = zp_tx::Transaction::read(&mut recording, branch_id)?;
+        let inner = zp_tx::CompressedTransaction::read(&mut recording, branch_id)?;
         (inner, recording.into_recorded())
     } else {
         (
-            zp_tx::Transaction::read(with_header, branch_id)?,
+            zp_tx::CompressedTransaction::read(with_header, branch_id)?,
             Vec::new(),
         )
     };
@@ -1025,7 +1035,10 @@ fn deserialize_and_check<R: std::io::Read>(
 ///
 /// Locating the field from the end of the transaction avoids re-parsing the variable-length
 /// transparent inputs and outputs that precede it.
-fn v4_empty_sapling_value_balance(raw_bytes: &[u8], inner: &zp_tx::Transaction) -> Option<i64> {
+fn v4_empty_sapling_value_balance(
+    raw_bytes: &[u8],
+    inner: &zp_tx::CompressedTransaction,
+) -> Option<i64> {
     /// The serialized size of one V4 JoinSplit description, which always carries a Groth16
     /// proof: two 8-byte values, nine 32-byte fields, the proof, and two note ciphertexts.
     const V4_JOINSPLIT_SIZE: usize = (2 * 8) + (9 * 32) + 192 + (2 * 601);
@@ -1325,7 +1338,12 @@ impl Transaction {
             None,
             None,
         );
-        Transaction(tx_data.freeze().expect("built from valid components"))
+        Transaction(
+            tx_data
+                .freeze()
+                .expect("built from valid components")
+                .compress(),
+        )
     }
 
     /// Build a V5 transaction with an Orchard bundle, for tests.
@@ -1357,7 +1375,12 @@ impl Transaction {
             orchard_bundle,
         );
 
-        Transaction(tx_data.freeze().expect("built from valid components"))
+        Transaction(
+            tx_data
+                .freeze()
+                .expect("built from valid components")
+                .compress(),
+        )
     }
 
     /// Build a V6 transaction with Orchard and Ironwood bundles, for tests.
@@ -1390,7 +1413,12 @@ impl Transaction {
             ironwood_bundle,
         );
 
-        Transaction(tx_data.freeze().expect("built from valid components"))
+        Transaction(
+            tx_data
+                .freeze()
+                .expect("built from valid components")
+                .compress(),
+        )
     }
 
     /// Converts Zebra transparent inputs and outputs into a librustzcash bundle,
@@ -1459,7 +1487,7 @@ impl Transaction {
         >,
     ) -> Self {
         let data = &*self.0;
-        let tx_data = compat::transaction_data_from_parts(
+        let tx_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
             data.lock_time(),
@@ -1476,7 +1504,7 @@ impl Transaction {
     /// Rebuild this transaction with a different expiry height (recomputes txid).
     pub fn set_expiry_height(&mut self, height: block::Height) {
         let data = self.0.clone().into_data();
-        let new_data = compat::transaction_data_from_parts(
+        let new_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
             data.lock_time(),
@@ -1497,7 +1525,7 @@ impl Transaction {
             .and_then(|cbid| zcash_protocol::consensus::BranchId::try_from(cbid).ok())
             .expect("network upgrade must have a valid branch ID");
         let data = self.0.clone().into_data();
-        let new_data = compat::transaction_data_from_parts(
+        let new_data = compat::compressed_data_from_parts(
             data.version(),
             branch_id,
             data.lock_time(),
@@ -1527,7 +1555,7 @@ impl Transaction {
         bundle: Option<::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
     ) -> Self {
         let data = &*self.0;
-        let tx_data = compat::transaction_data_from_parts(
+        let tx_data = compat::compressed_data_from_parts(
             data.version(),
             data.consensus_branch_id(),
             data.lock_time(),
@@ -1535,7 +1563,7 @@ impl Transaction {
             data.transparent_bundle().cloned(),
             data.sprout_bundle().cloned(),
             data.sapling_bundle().cloned(),
-            bundle,
+            bundle.map(::orchard::Bundle::compress),
             data.ironwood_bundle().cloned(),
         );
         Transaction(tx_data.freeze().expect("rebuilt from valid transaction"))

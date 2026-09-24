@@ -8,16 +8,13 @@
 
 mod vectors;
 
-use std::io::Cursor;
-
 use vectors::{
     GET_BLOCKCHAIN_INFO_RESPONSE, GET_BLOCK_RESPONSE_1, GET_BLOCK_RESPONSE_2,
     GET_BLOCK_TEMPLATE_RESPONSE_TEMPLATE, GET_RAW_TRANSACTION_RESPONSE_TRUE,
 };
 
 use zebra_rpc::client::zebra_chain::{
-    sapling::ValueCommitment,
-    serialization::{BytesInDisplayOrder, ZcashDeserialize, ZcashSerialize},
+    serialization::BytesInDisplayOrder,
     subtree::NoteCommitmentSubtreeIndex,
     transparent::{OutputIndex, Script},
     work::difficulty::{CompactDifficulty, ExpandedDifficulty},
@@ -783,35 +780,27 @@ fn test_get_raw_transaction_true() -> Result<(), Box<dyn std::error::Error>> {
         .shielded_spends()
         .iter()
         .map(|spend| {
-            // TODO: this is very different from all other types. Change?
-            let cv = spend.cv().zcash_serialize_to_vec().expect("should work");
+            let cv = spend.cv();
             let anchor = spend.anchor();
             let nullifier = spend.nullifier();
             let rk = spend.rk();
             let proof = spend.proof();
             let spend_auth_sig = spend.spend_auth_sig();
-            ShieldedSpend::new(
-                ValueCommitment::zcash_deserialize(Cursor::new(cv)).expect("was just serialized"),
-                anchor,
-                nullifier,
-                rk,
-                proof,
-                spend_auth_sig,
-            )
+            ShieldedSpend::new(cv, anchor, nullifier, rk, proof, spend_auth_sig)
         })
         .collect();
     let shielded_outputs = tx
         .shielded_outputs()
         .iter()
         .map(|output| {
-            let cv = output.cv().zcash_serialize_to_vec().expect("should work");
+            let cv = output.cv();
             let cm_u = output.cm_u();
             let ephemeral_key = output.ephemeral_key();
             let enc_ciphertext = output.enc_ciphertext();
             let out_ciphertext = output.out_ciphertext();
             let proof = output.proof();
             ShieldedOutput::new(
-                ValueCommitment::zcash_deserialize(Cursor::new(cv)).expect("was just serialized"),
+                cv,
                 cm_u,
                 ephemeral_key,
                 enc_ciphertext,

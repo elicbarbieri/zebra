@@ -79,6 +79,16 @@ pub enum Error {
     /// Zebra's type could not be converted to its librustzcash equivalent.
     #[error("Zebra's type could not be converted to its librustzcash equivalent: {0}")]
     Conversion(String),
+
+    /// Sapling/Orchard-protocol point-encoding rule broken (checked on decompress, not parse)
+    #[error("invalid point encoding: {0}")]
+    InvalidPointEncoding(Arc<zcash_primitives::transaction::DecompressionError>),
+}
+
+impl From<zcash_primitives::transaction::DecompressionError> for Error {
+    fn from(value: zcash_primitives::transaction::DecompressionError) -> Self {
+        Error::InvalidPointEncoding(Arc::new(value))
+    }
 }
 
 /// Allow converting `io::Error` to `Error`; we need this since we
@@ -107,6 +117,9 @@ impl PartialEq for Error {
             Error::MissingNetworkUpgrade => matches!(other, Error::MissingNetworkUpgrade),
             Error::Amount(e) => matches!(other, Error::Amount(o) if e == o),
             Error::Conversion(e) => matches!(other, Error::Conversion(o) if e == o),
+            Error::InvalidPointEncoding(e) => {
+                matches!(other, Error::InvalidPointEncoding(o) if e.to_string() == o.to_string())
+            }
         }
     }
 }

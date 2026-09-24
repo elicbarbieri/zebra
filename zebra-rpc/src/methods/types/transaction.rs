@@ -24,7 +24,6 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     primitives::ed25519,
-    sapling::ValueCommitment,
     serialization::ZcashSerialize,
     transaction::{self, SerializedTransaction, Transaction, VerifiedUnminedTx},
     transparent::Script,
@@ -618,8 +617,8 @@ pub struct JoinSplit {
 pub struct ShieldedSpend {
     /// Value commitment to the input note.
     #[serde(with = "hex")]
-    #[getter(skip)]
-    cv: ValueCommitment,
+    #[getter(copy)]
+    cv: [u8; 32],
     /// Merkle root of the Sapling note commitment tree.
     #[serde(with = "hex")]
     #[getter(copy)]
@@ -642,21 +641,13 @@ pub struct ShieldedSpend {
     spend_auth_sig: [u8; 64],
 }
 
-// We can't use `#[getter(copy)]` as upstream `sapling_crypto::note::ValueCommitment` is not `Copy`.
-impl ShieldedSpend {
-    /// The value commitment to the input note.
-    pub fn cv(&self) -> ValueCommitment {
-        self.cv.clone()
-    }
-}
-
 /// A Sapling output of a transaction.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, Getters, new)]
 pub struct ShieldedOutput {
     /// Value commitment to the input note.
     #[serde(with = "hex")]
-    #[getter(skip)]
-    cv: ValueCommitment,
+    #[getter(copy)]
+    cv: [u8; 32],
     /// The u-coordinate of the note commitment for the output note.
     #[serde(rename = "cmu", with = "hex")]
     cm_u: [u8; 32],
@@ -672,14 +663,6 @@ pub struct ShieldedOutput {
     /// A zero-knowledge proof using the Sapling Output circuit.
     #[serde(with = "hex")]
     proof: [u8; 192],
-}
-
-// We can't use `#[getter(copy)]` as upstream `sapling_crypto::note::ValueCommitment` is not `Copy`.
-impl ShieldedOutput {
-    /// The value commitment to the output note.
-    pub fn cv(&self) -> ValueCommitment {
-        self.cv.clone()
-    }
 }
 
 /// Object with Orchard-specific information.
@@ -766,7 +749,7 @@ pub struct OrchardAction {
 /// serves both. The caller supplies the pool's own value balance, since that is read from a
 /// separate field per pool.
 fn orchard_shaped_object(
-    bundle: Option<&::orchard::Bundle<::orchard::bundle::Authorized, ZatBalance>>,
+    bundle: Option<&::orchard::BundleBytes<::orchard::bundle::Authorized, ZatBalance>>,
     value_balance: Amount<NegativeAllowed>,
 ) -> Orchard {
     let actions = bundle
@@ -775,7 +758,7 @@ fn orchard_shaped_object(
         .map(|action| OrchardAction {
             cv: action.cv_net().to_bytes(),
             nullifier: action.nullifier().to_bytes(),
-            rk: action.rk().into(),
+            rk: action.rk().to_bytes(),
             cm_x: action.cmx().to_bytes(),
             ephemeral_key: action.encrypted_note().epk_bytes,
             enc_ciphertext: action.encrypted_note().enc_ciphertext,
@@ -954,6 +937,9 @@ impl TransactionObject {
             shielded_spends: tx
                 .sapling_spends()
                 .map(|spend| {
+                    let mut cv = spend.cv().to_bytes();
+                    cv.reverse();
+
                     let mut anchor = spend.anchor().to_bytes();
                     anchor.reverse();
 
@@ -966,7 +952,7 @@ impl TransactionObject {
                     let spend_auth_sig: [u8; 64] = (*spend.spend_auth_sig()).into();
 
                     ShieldedSpend {
-                        cv: ValueCommitment(spend.cv().clone()),
+                        cv,
                         anchor,
                         nullifier,
                         rk,
@@ -978,6 +964,9 @@ impl TransactionObject {
             shielded_outputs: tx
                 .sapling_outputs()
                 .map(|output| {
+                    let mut cv = output.cv().to_bytes();
+                    cv.reverse();
+
                     let mut cm_u: [u8; 32] = output.cmu().to_bytes();
                     cm_u.reverse();
                     let mut ephemeral_key: [u8; 32] = output.ephemeral_key().0;
@@ -986,7 +975,7 @@ impl TransactionObject {
                     let out_ciphertext: [u8; 80] = *output.out_ciphertext();
 
                     ShieldedOutput {
-                        cv: ValueCommitment(output.cv().clone()),
+                        cv,
                         cm_u,
                         ephemeral_key,
                         enc_ciphertext,

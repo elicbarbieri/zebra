@@ -125,6 +125,9 @@ pub enum TransactionError {
     #[error("transaction version {0} not supported by the network upgrade {1:?}")]
     UnsupportedByNetworkUpgrade(u32, zebra_chain::parameters::NetworkUpgrade),
 
+    #[error("invalid shielded point encoding: {0}")]
+    InvalidPointEncoding(String),
+
     #[error("must have at least one input: transparent, shielded spend, or joinsplit")]
     NoInputs,
 
@@ -325,6 +328,12 @@ impl From<libzcash_script::Error> for TransactionError {
 impl From<std::io::Error> for TransactionError {
     fn from(err: std::io::Error) -> Self {
         TransactionError::Io(err.to_string())
+    }
+}
+
+impl From<zcash_primitives::transaction::DecompressionError> for TransactionError {
+    fn from(err: zcash_primitives::transaction::DecompressionError) -> Self {
+        TransactionError::InvalidPointEncoding(err.to_string())
     }
 }
 

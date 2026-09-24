@@ -1462,6 +1462,12 @@ where
         let raw_transaction = Transaction::zcash_deserialize(&*raw_transaction_bytes)
             .map_error(server::error::LegacyCode::Deserialization)?;
 
+        // Point rules (deferred from parse), checked before the retry queue
+        // - Bad point stays a decode error, never queued for re-verification each block
+        raw_transaction
+            .decompress()
+            .map_error(server::error::LegacyCode::Deserialization)?;
+
         let transaction_hash = raw_transaction.hash();
 
         // send transaction to the rpc queue, ignore any error.
