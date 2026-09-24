@@ -11,7 +11,6 @@ mod auth_digest;
 pub(crate) mod compat;
 mod hash;
 mod lock_time;
-mod memo;
 mod serialize;
 mod sighash;
 mod unmined;
@@ -23,10 +22,8 @@ pub mod arbitrary;
 mod tests;
 
 pub use auth_digest::AuthDigest;
-pub use compat::{sprout_joinsplit_key_proof_and_ciphertexts, SPROUT_CIPHERTEXT_SIZE};
 pub use hash::{Hash, WtxId};
 pub use lock_time::LockTime;
-pub use memo::Memo;
 pub use serialize::{
     SerializedTransaction, MIN_TRANSPARENT_TX_SIZE, MIN_TRANSPARENT_TX_V4_SIZE,
     MIN_TRANSPARENT_TX_V5_SIZE,

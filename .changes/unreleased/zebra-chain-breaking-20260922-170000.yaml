@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: 'Removed more code the move onto `zcash_primitives` left unused: `transaction::Memo` (use `zcash_protocol::memo::MemoBytes`), `transaction::{sprout_joinsplit_key_proof_and_ciphertexts, SPROUT_CIPHERTEXT_SIZE}` (the `JsDescription` accessors replace them), `sapling::tree::NoteCommitmentTree::uncommitted`, `From<sapling::Nullifier> for [jubjub::Fq; 2]`, the `serde_helpers::{AffinePoint, Affine, Scalar, ValueCommitment, SaplingExtractedNoteCommitment}` shims, and the `ZcashDeserialize` impls for `jubjub::Fq` / `pallas::Scalar` / `pallas::Base`.'
+time: 2026-09-22T17:00:00.000000000Z
