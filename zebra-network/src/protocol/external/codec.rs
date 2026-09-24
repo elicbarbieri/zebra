@@ -21,7 +21,7 @@ use zebra_chain::{
         SerializationError as Error, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize,
         MAX_HEADERS_PER_MESSAGE, MAX_PROTOCOL_MESSAGE_LEN,
     },
-    transaction::Transaction,
+    transaction::CompressedTransaction,
 };
 
 use crate::constants;
@@ -794,7 +794,7 @@ impl Codec {
     #[allow(clippy::unwrap_in_result)]
     fn deserialize_transaction_spawning<R: Read + std::marker::Send>(
         reader: R,
-    ) -> Result<Transaction, Error> {
+    ) -> Result<CompressedTransaction, Error> {
         let mut result = None;
 
         // Correctness: Do CPU-intensive work on a dedicated thread, to avoid blocking other futures.
@@ -807,7 +807,7 @@ impl Codec {
         // - There is no way to check the blocking task's future for panics
         tokio::task::block_in_place(|| {
             rayon::in_place_scope_fifo(|s| {
-                s.spawn_fifo(|_s| result = Some(Transaction::zcash_deserialize(reader)))
+                s.spawn_fifo(|_s| result = Some(CompressedTransaction::zcash_deserialize(reader)))
             })
         });
 

@@ -16,13 +16,16 @@ use tower::buffer::Buffer;
 
 use zebra_chain::{
     amount::{Amount, NonNegative},
-    block::{self, Block, Height},
+    block::{self, Block, Height, LedgerState},
     chain_sync_status::MockSyncStatus,
     chain_tip::{mock::MockChainTip, ChainTip, NoChainTip},
     history_tree::HistoryTree,
     parameters::{ConsensusBranchId, Network, NetworkUpgrade},
     serialization::{DateTime32, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
-    transaction::{self, Transaction, TransactionExt, UnminedTx, VerifiedUnminedTx},
+    transaction::{
+        self, arbitrary::TransactionArbitrary, CompressedTransaction, TransactionExt, UnminedTx,
+        VerifiedUnminedTx,
+    },
     transparent,
     value_balance::ValueBalance,
 };
@@ -47,7 +50,7 @@ use super::super::{
 proptest! {
     /// Test that when sending a raw transaction, it is received by the mempool service.
     #[test]
-    fn mempool_receives_raw_tx(transaction in any::<Transaction>(), network in any::<Network>()) {
+    fn mempool_receives_raw_tx(transaction in CompressedTransaction::strategy(LedgerState::default()), network in any::<Network>()) {
         prop_assume!(!(transaction.is_coinbase() && transaction.sapling_spends().count() > 0));
 
         let (runtime, _init_guard) = zebra_test::init_async();
@@ -94,7 +97,7 @@ proptest! {
     ///
     /// Mempool service errors should become server errors.
     #[test]
-    fn mempool_errors_are_forwarded(transaction in any::<Transaction>(), network in any::<Network>()) {
+    fn mempool_errors_are_forwarded(transaction in CompressedTransaction::strategy(LedgerState::default()), network in any::<Network>()) {
         prop_assume!(!(transaction.is_coinbase() && transaction.sapling_spends().count() > 0));
 
         let (runtime, _init_guard) = zebra_test::init_async();
@@ -150,7 +153,7 @@ proptest! {
 
     /// Test that when the mempool rejects a transaction the caller receives an error.
     #[test]
-    fn rejected_txs_are_reported(transaction in any::<Transaction>(), network in any::<Network>()) {
+    fn rejected_txs_are_reported(transaction in CompressedTransaction::strategy(LedgerState::default()), network in any::<Network>()) {
         prop_assume!(!(transaction.is_coinbase() && transaction.sapling_spends().count() > 0));
 
         let (runtime, _init_guard) = zebra_test::init_async();
@@ -222,7 +225,7 @@ proptest! {
         // CORRECTNESS: Nothing in this test depends on real time, so we can speed it up.
         tokio::time::pause();
 
-        prop_assume!(Transaction::zcash_deserialize(&*random_bytes).is_err());
+        prop_assume!(CompressedTransaction::zcash_deserialize(&*random_bytes).is_err());
 
         runtime.block_on(async move {
             let send_task = rpc.send_raw_transaction(hex::encode(random_bytes), None);
@@ -263,7 +266,7 @@ proptest! {
         let mut bytes = tx.zcash_serialize_to_vec().expect("serializes");
         let at = bytes.windows(32).position(|window| window == cv).expect("output 0 cv on the wire");
         bytes[at..at + 32].copy_from_slice(&[0xff; 32]);
-        prop_assert!(Transaction::zcash_deserialize(&*bytes).is_ok(), "bad point parses");
+        prop_assert!(CompressedTransaction::zcash_deserialize(&*bytes).is_ok(), "bad point parses");
 
         runtime.block_on(async move {
             // Spawned: a mempool request must be issued before `expect_no_requests` looks
@@ -769,7 +772,7 @@ proptest! {
 
     /// Test the queue functionality using `send_raw_transaction`
     #[test]
-    fn rpc_queue_main_loop(tx in any::<Transaction>(), network in any::<Network>()) {
+    fn rpc_queue_main_loop(tx in CompressedTransaction::strategy(LedgerState::default()), network in any::<Network>()) {
         prop_assume!(!(tx.is_coinbase() && tx.sapling_spends().count() > 0));
 
         let (runtime, _init_guard) = zebra_test::init_async();
@@ -848,7 +851,7 @@ proptest! {
 
     /// Test we receive all transactions that are sent in a channel
     #[test]
-    fn rpc_queue_receives_all_txs_from_channel(txs in any::<[Transaction; 2]>(),
+    fn rpc_queue_receives_all_txs_from_channel(txs in proptest::array::uniform2(CompressedTransaction::strategy(LedgerState::default())),
                                                network in any::<Network>()) {
         prop_assume!(txs.iter().all(|tx| !(tx.is_coinbase() && tx.sapling_spends().count() > 0)));
         let (runtime, _init_guard) = zebra_test::init_async();

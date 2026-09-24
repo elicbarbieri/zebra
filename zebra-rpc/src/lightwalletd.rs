@@ -8,7 +8,7 @@
 
 use zebra_chain::{
     block, transaction,
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
 };
 
 #[cfg(test)]
@@ -37,7 +37,7 @@ const COMPACT_CIPHERTEXT_SIZE: usize = 52;
 
 /// Returns true if the transaction contains any data that belongs in a
 /// [`CompactTx`]: Sapling spends or outputs, or Orchard or Ironwood actions.
-pub(crate) fn has_compact_data(tx: &Transaction) -> bool {
+pub(crate) fn has_compact_data(tx: &CompressedTransaction) -> bool {
     tx.sapling_nullifiers().next().is_some()
         || tx.sapling_outputs().next().is_some()
         || tx.orchard_actions().next().is_some()
@@ -49,7 +49,7 @@ pub(crate) fn has_compact_data(tx: &Transaction) -> bool {
 ///
 /// Outputs are omitted in that mode, so a transaction with only Sapling outputs would
 /// otherwise be included as a [`CompactTx`] carrying nothing but an index and a hash.
-pub(crate) fn has_nullifiers(tx: &Transaction) -> bool {
+pub(crate) fn has_nullifiers(tx: &CompressedTransaction) -> bool {
     tx.sapling_nullifiers().next().is_some()
         || tx.orchard_actions().next().is_some()
         || tx.ironwood_actions().next().is_some()
@@ -141,7 +141,7 @@ impl CompactTx {
     pub fn from_transaction(
         index: u64,
         hash: transaction::Hash,
-        tx: &Transaction,
+        tx: &CompressedTransaction,
         nullifiers_only: bool,
     ) -> Self {
         let spends = tx

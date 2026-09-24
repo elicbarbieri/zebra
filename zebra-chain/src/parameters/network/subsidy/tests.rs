@@ -13,7 +13,7 @@ use crate::parameters::{subsidy::FundingStreamReceiver, NetworkKind};
 use crate::{
     amount::{Amount, DeferredPoolBalanceChange},
     block::Block,
-    transaction::Transaction,
+    transaction::{CompressedTransaction, TransactionTestExt},
     transparent::{Address, Output},
 };
 use color_eyre::Report;
@@ -839,7 +839,7 @@ fn zero_subsidy_still_requires_fixed_lockbox_disbursements() -> Result<(), Repor
     let header: Header = zebra_test::vectors::DUMMY_HEADER.zcash_deserialize_into()?;
     let make_block = |outputs| Block {
         header: Arc::new(header),
-        transactions: vec![Arc::new(Transaction::test_v1(
+        transactions: vec![Arc::new(CompressedTransaction::test_v1(
             vec![transparent::Input::Coinbase {
                 height,
                 data: vec![0],

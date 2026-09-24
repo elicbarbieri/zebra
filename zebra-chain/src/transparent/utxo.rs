@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     block::{self, Block, Height},
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     transparent,
 };
 
@@ -231,7 +231,7 @@ pub fn new_ordered_outputs_with_height(
 ///
 /// This function is only for use in this module, and in tests.
 pub fn new_transaction_ordered_outputs(
-    transaction: &Transaction,
+    transaction: &CompressedTransaction,
     hash: transaction::Hash,
     tx_index_in_block: usize,
     height: block::Height,

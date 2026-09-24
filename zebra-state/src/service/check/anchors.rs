@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use zebra_chain::{
     block::{Block, Height},
     sprout,
-    transaction::{Hash as TransactionHash, Transaction, TransactionExt, UnminedTx},
+    transaction::{CompressedTransaction, Hash as TransactionHash, TransactionExt, UnminedTx},
 };
 
 use crate::{
@@ -24,7 +24,7 @@ use crate::{
 fn sapling_orchard_anchors_refer_to_final_treestates(
     finalized_state: &ZebraDb,
     parent_chain: Option<&Arc<Chain>>,
-    transaction: &Arc<Transaction>,
+    transaction: &Arc<CompressedTransaction>,
     transaction_hash: TransactionHash,
     tx_index_in_block: Option<usize>,
     height: Option<Height>,
@@ -177,7 +177,7 @@ fn fetch_sprout_final_treestates(
     >,
     finalized_state: &ZebraDb,
     parent_chain: Option<&Arc<Chain>>,
-    transaction: &Arc<Transaction>,
+    transaction: &Arc<CompressedTransaction>,
     tx_index_in_block: Option<usize>,
     height: Option<Height>,
 ) {
@@ -229,7 +229,7 @@ fn fetch_sprout_final_treestates(
 #[tracing::instrument(skip(sprout_final_treestates, transaction))]
 fn sprout_anchors_refer_to_treestates(
     sprout_final_treestates: &HashMap<sprout::tree::Root, Arc<sprout::tree::NoteCommitmentTree>>,
-    transaction: &Arc<Transaction>,
+    transaction: &Arc<CompressedTransaction>,
     transaction_hash: TransactionHash,
     tx_index_in_block: Option<usize>,
     height: Option<Height>,

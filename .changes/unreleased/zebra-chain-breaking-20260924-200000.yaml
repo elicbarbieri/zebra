@@ -1,4 +1,4 @@
 project: zebra-chain
 kind: breaking
-body: 'Transaction helpers (`inputs`, `outputs`, the nullifier, note commitment, anchor and value balance accessors, `hash`, `unmined_id`, …) moved from inherent methods on `transaction::Transaction` to the `transaction::TransactionExt` trait, implemented for both `Transaction` and the decompressed `zcash_primitives::transaction::Transaction`; import the trait to call them.'
+body: 'Transaction helpers (`inputs`, `outputs`, the nullifier, note commitment, anchor and value balance accessors, `hash`, `unmined_id`, …) are on the `transaction::TransactionExt` trait instead of inherent methods, implemented for both `CompressedTransaction` and the decompressed `zcash_primitives::transaction::Transaction`; import the trait to call them.'
 time: 2026-09-24T20:00:00.000000000Z

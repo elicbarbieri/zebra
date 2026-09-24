@@ -32,8 +32,8 @@ use zebra_chain::{
     parameters::NetworkUpgrade,
     serialization::{BytesInDisplayOrder, ZcashDeserializeInto},
     transaction::{
-        arbitrary::with_garbage_orchard_authorization, AuthDigest, Hash, HashType, SigHash,
-        Transaction, TransactionExt, WtxId,
+        arbitrary::with_garbage_orchard_authorization, AuthDigest, CompressedTransaction, Hash,
+        HashType, SigHash, TransactionExt, WtxId,
     },
     transparent,
 };
@@ -68,8 +68,11 @@ fn pre_nu6_2_bundle_and_sighash() -> (Bundle<Authorized, ZatBalance>, SigHash) {
 ///
 /// The transaction itself is needed by the cache-key tests, which derive the key from its
 /// witnessed transaction ID. See [`pre_nu6_2_bundle_and_sighash`] for how it is selected.
-fn pre_nu6_2_transaction_bundle_and_sighash(
-) -> (Transaction, Bundle<Authorized, ZatBalance>, SigHash) {
+fn pre_nu6_2_transaction_bundle_and_sighash() -> (
+    CompressedTransaction,
+    Bundle<Authorized, ZatBalance>,
+    SigHash,
+) {
     for bytes in zebra_test::vectors::MAINNET_BLOCKS.values() {
         let block: Block = bytes
             .zcash_deserialize_into()
@@ -207,7 +210,7 @@ fn test_wtx_id(tag: u8) -> WtxId {
 }
 
 /// Returns the witnessed transaction ID of `tx`.
-fn wtx_id_of(tx: &Transaction) -> WtxId {
+fn wtx_id_of(tx: &CompressedTransaction) -> WtxId {
     WtxId {
         id: tx.hash(),
         auth_digest: tx

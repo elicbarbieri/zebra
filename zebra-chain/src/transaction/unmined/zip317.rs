@@ -11,7 +11,7 @@ use crate::{
     amount::{Amount, NonNegative},
     block::MAX_BLOCK_BYTES,
     serialization::ZcashSerialize,
-    transaction::{Transaction, TransactionExt, UnminedTx},
+    transaction::{CompressedTransaction, TransactionExt, UnminedTx},
 };
 
 #[cfg(test)]
@@ -69,7 +69,7 @@ pub const MEMPOOL_TX_FEE_REQUIREMENT_CAP: usize = 1000;
 /// Returns the conventional fee for `transaction`, as defined by [ZIP-317].
 ///
 /// [ZIP-317]: https://zips.z.cash/zip-0317#fee-calculation
-pub fn conventional_fee(transaction: &Transaction) -> Amount<NonNegative> {
+pub fn conventional_fee(transaction: &CompressedTransaction) -> Amount<NonNegative> {
     // zcash_primitives checks for non-p2pkh inputs, but Zebra doesn't.
     // Conventional fees are only used in the standard rules for mempool eviction
     // and block production, so these implementations are compatible.
@@ -137,7 +137,7 @@ pub fn conventional_fee_weight_ratio(
 /// as defined by [ZIP-317].
 ///
 /// [ZIP-317]: https://zips.z.cash/zip-0317#fee-calculation
-pub fn conventional_actions(transaction: &Transaction) -> u32 {
+pub fn conventional_actions(transaction: &CompressedTransaction) -> u32 {
     let tx_in_total_size: usize = transaction
         .inputs()
         .iter()

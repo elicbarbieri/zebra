@@ -21,7 +21,7 @@ use zebra_chain::{
         Network, NetworkKind, NetworkUpgrade,
     },
     serialization::ZcashSerialize as _,
-    transaction::{self, LockTime, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, LockTime, TransactionExt, TransactionTestExt},
     transparent,
 };
 use zebra_node_services::rpc_client::RpcRequestClient;
@@ -43,16 +43,16 @@ use crate::common::{
 
 // A standard P2SH output whose redeem script is OP_TRUE. These spends still pass through the
 // real UTXO, maturity, standardness, script, fee, and transaction-version checks.
-fn spend(previous: &Transaction, nu7: bool, fee: u64) -> Result<Transaction> {
+fn spend(previous: &CompressedTransaction, nu7: bool, fee: u64) -> Result<CompressedTransaction> {
     spend_expiring(previous, nu7, fee, Height(if nu7 { 105 } else { 200 }))
 }
 
 fn spend_expiring(
-    previous: &Transaction,
+    previous: &CompressedTransaction,
     nu7: bool,
     fee: u64,
     expiry: Height,
-) -> Result<Transaction> {
+) -> Result<CompressedTransaction> {
     let input = transparent::Input::PrevOut {
         outpoint: transparent::OutPoint {
             hash: previous.hash(),
@@ -64,7 +64,7 @@ fn spend_expiring(
     let mut output = previous.outputs()[0].clone();
     output.value = (output.value - Amount::try_from(fee)?)?;
     Ok(if nu7 {
-        Transaction::test_v5(
+        CompressedTransaction::test_v5(
             NetworkUpgrade::Nu7,
             vec![input],
             vec![output],
@@ -72,11 +72,11 @@ fn spend_expiring(
             expiry,
         )
     } else {
-        Transaction::test_v4(vec![input], vec![output], LockTime::unlocked(), expiry)
+        CompressedTransaction::test_v4(vec![input], vec![output], LockTime::unlocked(), expiry)
     })
 }
 
-async fn send(client: &RpcRequestClient, tx: &Transaction) -> Result<()> {
+async fn send(client: &RpcRequestClient, tx: &CompressedTransaction) -> Result<()> {
     let data = hex::encode(tx.zcash_serialize_to_vec()?);
     let response: SendRawTransactionResponse = client
         .json_result_from_call("sendrawtransaction", format!(r#"["{data}"]"#))
@@ -306,7 +306,7 @@ async fn nu7_nsm_mining_reorg_and_restart() -> Result<()> {
         for tx in &before {
             send(&client, tx).await?;
         }
-        let before_ids = before.each_ref().map(Transaction::hash);
+        let before_ids = before.each_ref().map(CompressedTransaction::hash);
         mempool(&client, &before_ids).await?;
         let before_template = template(&client, 103, &before_ids).await?;
         for tx in before_template.transactions() {
@@ -344,7 +344,7 @@ async fn nu7_nsm_mining_reorg_and_restart() -> Result<()> {
         for tx in &fees {
             send(&client, tx).await?;
         }
-        let fee_ids = fees.each_ref().map(Transaction::hash);
+        let fee_ids = fees.each_ref().map(CompressedTransaction::hash);
         mempool(&client, &fee_ids).await?;
         let fee_template = template(&client, 105, &fee_ids).await?;
         for tx in fee_template.transactions() {
@@ -979,7 +979,7 @@ async fn nu7_block_rules_at_activation() -> Result<()> {
 
     /// A V6 transaction with `actions` dummy Orchard actions: the ZIP 218 limits are counted
     /// before any proof or state check, so no valid proofs are needed.
-    fn orchard_actions(actions: usize, seed: u64) -> Transaction {
+    fn orchard_actions(actions: usize, seed: u64) -> CompressedTransaction {
         let one =
             insert_fake_orchard_shielded_data(fake_v6_transaction(NetworkUpgrade::Nu7, None, None));
         let bundle = one.orchard_bundle().expect("inserted above");
@@ -993,7 +993,7 @@ async fn nu7_block_rules_at_activation() -> Result<()> {
         one.with_orchard_bundle(Some(bundle))
     }
 
-    fn with_transactions(block: &Block, extra: Vec<Transaction>) -> Block {
+    fn with_transactions(block: &Block, extra: Vec<CompressedTransaction>) -> Block {
         let mut block = block.clone();
         block.transactions.extend(extra.into_iter().map(Arc::new));
         Arc::make_mut(&mut block.header).merkle_root = block.transactions.iter().collect();
@@ -1001,7 +1001,10 @@ async fn nu7_block_rules_at_activation() -> Result<()> {
     }
 
     /// The `sendrawtransaction` error code and message for a transaction the mempool rejects.
-    async fn send_error(client: &RpcRequestClient, tx: &Transaction) -> Result<(i64, String)> {
+    async fn send_error(
+        client: &RpcRequestClient,
+        tx: &CompressedTransaction,
+    ) -> Result<(i64, String)> {
         let data = hex::encode(tx.zcash_serialize_to_vec()?);
         let response: serde_json::Value = serde_json::from_str(
             &client
@@ -1629,7 +1632,7 @@ async fn nu7_sync_from_peer_across_activation() -> Result<()> {
     async fn mine_with(
         client: &RpcRequestClient,
         network: &Network,
-        tx: &Transaction,
+        tx: &CompressedTransaction,
     ) -> Result<Block> {
         let block = tokio::time::timeout(Duration::from_secs(30), async {
             loop {

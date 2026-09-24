@@ -15,7 +15,7 @@ use crate::{
     Error,
 };
 
-use crate::{parameters::NetworkUpgrade, transaction::Transaction};
+use crate::{parameters::NetworkUpgrade, transaction::CompressedTransaction};
 
 // TODO: move copied and modified code to a separate module.
 //
@@ -223,18 +223,22 @@ impl PrecomputedTxData {
     /// which must match the branch ID used when the transaction was signed.
     /// Returns an error if `nu` doesn't have a valid consensus branch ID.
     pub(crate) fn new(
-        tx: &Transaction,
+        tx: &CompressedTransaction,
         nu: NetworkUpgrade,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<PrecomputedTxData, Error> {
         let branch_id = Self::sighash_branch_id(tx.tx_version(), tx.consensus_branch_id(), nu)?;
 
-        Self::from_decompressed_with_branch_id(tx.decompress()?, branch_id, all_previous_outputs)
+        Self::from_decompressed_with_branch_id(
+            &tx.clone().decompress()?,
+            branch_id,
+            all_previous_outputs,
+        )
     }
 
-    /// [`PrecomputedTxData::new`] reusing points [`Transaction::decompress`] already checked
+    /// [`PrecomputedTxData::new`] reusing points [`CompressedTransaction::decompress`] already checked
     pub(crate) fn from_decompressed(
-        tx: zp_tx::Transaction,
+        tx: &zp_tx::Transaction,
         nu: NetworkUpgrade,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<PrecomputedTxData, Error> {
@@ -271,7 +275,7 @@ impl PrecomputedTxData {
     ///
     /// Reconstructs the transaction with the correct `branch_id` for V1-V4 sighash computation.
     fn from_decompressed_with_branch_id(
-        inner: zp_tx::Transaction,
+        inner: &zp_tx::Transaction,
         branch_id: zcash_protocol::consensus::BranchId,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<PrecomputedTxData, Error> {
@@ -283,7 +287,7 @@ impl PrecomputedTxData {
         // The rebuild must preserve every bundle: losing the Ironwood one would leave
         // `PrecomputedTxData::ironwood_bundle` empty, and the verifier queues an Ironwood proof
         // check only when that returns `Some`.
-        let data = inner.into_data();
+        let data = inner.deref();
         let data_with_branch_id = crate::transaction::compat::transaction_data_from_parts(
             data.version(),
             branch_id,

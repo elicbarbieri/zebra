@@ -16,7 +16,10 @@ use zebra_chain::{
     },
     parameters::NetworkUpgrade,
     serialization::{ZcashDeserialize, ZcashDeserializeInto},
-    transaction::{arbitrary::transaction_to_fake_v5, LockTime, Transaction, TransactionExt},
+    transaction::{
+        arbitrary::transaction_to_fake_v5, CompressedTransaction, LockTime, TransactionExt,
+        TransactionTestExt,
+    },
     work::difficulty::{ParameterDifficulty as _, INVALID_COMPACT_DIFFICULTY},
 };
 use zebra_script::Sigops;
@@ -478,7 +481,7 @@ fn funding_stream_validation_failure() -> Result<(), Report> {
         .map(|transaction| {
             let mut output = transaction.outputs()[0].clone();
             output.value = Amount::try_from(i32::MAX).unwrap();
-            Transaction::test_v4(
+            CompressedTransaction::test_v4(
                 transaction.inputs().to_vec(),
                 vec![output],
                 transaction.lock_time().unwrap_or_else(LockTime::unlocked),
@@ -488,7 +491,8 @@ fn funding_stream_validation_failure() -> Result<(), Report> {
         .unwrap();
 
     // Build new block
-    let transactions: Vec<Arc<zebra_chain::transaction::Transaction>> = vec![Arc::new(tx)];
+    let transactions: Vec<Arc<zebra_chain::transaction::CompressedTransaction>> =
+        vec![Arc::new(tx)];
     let block = Block {
         header: block.header.clone(),
         transactions,
@@ -635,7 +639,7 @@ fn zip235_coinbase_cant_claim_the_nsm_fee_contribution() -> Result<(), Report> {
         let block_subsidy = Amount::<NonNegative>::try_from(625_000_000).expect("valid amount");
         let claimed_fees = Amount::<NonNegative>::try_from(claimed_fees).expect("valid amount");
 
-        let coinbase = Transaction::test_v4(
+        let coinbase = CompressedTransaction::test_v4(
             vec![transparent::Input::Coinbase {
                 height,
                 data: vec![0],
@@ -767,7 +771,7 @@ fn merkle_root_fake_v5_for_network(network: Network) -> Result<(), Report> {
         }
 
         // convert all transactions from the block to V5
-        let transactions: Vec<Arc<Transaction>> = block
+        let transactions: Vec<Arc<CompressedTransaction>> = block
             .transactions
             .iter()
             .map(AsRef::as_ref)
@@ -1069,7 +1073,7 @@ async fn nsm_block_verifier_leaves_subsidy_checks_to_the_state() -> Result<(), R
         let mut block =
             Block::zcash_deserialize(&zebra_test::vectors::BLOCK_MAINNET_1_BYTES[..]).unwrap();
 
-        let coinbase = Transaction::test_v4(
+        let coinbase = CompressedTransaction::test_v4(
             vec![transparent::Input::Coinbase {
                 height,
                 data: vec![0],
@@ -1335,7 +1339,7 @@ async fn shielded_limits_precede_coinbase_recovery() {
         1,
     )
     .expect("NU7 supports Ironwood");
-    let transaction = Transaction::test_v6_with_bundles(
+    let transaction = CompressedTransaction::test_v6_with_bundles(
         NetworkUpgrade::Nu7,
         vec![Input::Coinbase {
             height,

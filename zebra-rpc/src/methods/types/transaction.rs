@@ -28,7 +28,9 @@ use zebra_chain::{
     },
     primitives::ed25519,
     serialization::ZcashSerialize,
-    transaction::{self, SerializedTransaction, Transaction, TransactionExt, VerifiedUnminedTx},
+    transaction::{
+        self, CompressedTransaction, SerializedTransaction, TransactionExt, VerifiedUnminedTx,
+    },
     transparent::{OutPoint, Script, Utxo},
 };
 use zebra_consensus::error::TransactionError;
@@ -901,7 +903,7 @@ impl TransactionObject {
     #[allow(clippy::unwrap_in_result)]
     #[allow(clippy::too_many_arguments)]
     pub fn from_transaction(
-        tx: Arc<Transaction>,
+        tx: Arc<CompressedTransaction>,
         height: Option<block::Height>,
         confirmations: Option<i64>,
         network: &Network,
@@ -1117,7 +1119,7 @@ impl TransactionObject {
     /// every spent output is present, because the value balance is otherwise incomplete.
     pub fn add_prevouts(
         &mut self,
-        tx: &Transaction,
+        tx: &CompressedTransaction,
         spent_utxos: &HashMap<OutPoint, Utxo>,
         network: &Network,
     ) {
@@ -1168,7 +1170,7 @@ mod tests {
     ///
     /// "Transparent-only" means it has transparent inputs and no shielded data, so its fee is just
     /// the difference between the transparent input and output totals.
-    fn first_transparent_only_tx() -> Arc<Transaction> {
+    fn first_transparent_only_tx() -> Arc<CompressedTransaction> {
         zebra_test::vectors::MAINNET_BLOCKS
             .values()
             .flat_map(|bytes| {

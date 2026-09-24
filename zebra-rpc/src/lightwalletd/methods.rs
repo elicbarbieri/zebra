@@ -890,7 +890,7 @@ async fn raw_transaction_by_txid<ReadStateService: ReadState>(
 }
 
 /// Serializes a transaction into raw bytes for a [`RawTransaction`].
-fn serialize_transaction(tx: &transaction::Transaction) -> Result<Vec<u8>, Status> {
+fn serialize_transaction(tx: &transaction::CompressedTransaction) -> Result<Vec<u8>, Status> {
     tx.zcash_serialize_to_vec()
         .map_err(|_| Status::internal("failed to serialize transaction"))
 }

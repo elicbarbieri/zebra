@@ -40,7 +40,7 @@ use zebra_chain::{
     parameters::Network,
     sapling,
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     transparent,
 };
 
@@ -138,7 +138,7 @@ struct TransactionData {
 }
 
 impl TransactionData {
-    pub fn new(loc: TransactionLocation, transaction: &Transaction) -> TransactionData {
+    pub fn new(loc: TransactionLocation, transaction: &CompressedTransaction) -> TransactionData {
         let transaction = transaction
             .zcash_serialize_to_vec()
             .expect("serialization of stored transaction succeeds");

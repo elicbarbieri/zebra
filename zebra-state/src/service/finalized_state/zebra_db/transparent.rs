@@ -23,7 +23,7 @@ use zebra_chain::{
     amount::{self, Amount, Constraint, NonNegative},
     block::Height,
     parameters::Network,
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     transparent::{self, Input},
 };
 
@@ -496,7 +496,7 @@ impl DiskWriteBatch {
     fn prepare_transparent_address_balance_updates(
         network: &Network,
         height: Height,
-        transactions: &[Arc<Transaction>],
+        transactions: &[Arc<CompressedTransaction>],
         spent_utxos_by_outpoint: &HashMap<transparent::OutPoint, transparent::Utxo>,
         address_balances: &mut AddressBalanceLocationUpdates,
     ) {
@@ -508,7 +508,7 @@ impl DiskWriteBatch {
             addr_locs: &mut HashMap<transparent::Address, T>,
             network: &Network,
             height: Height,
-            transactions: &[Arc<Transaction>],
+            transactions: &[Arc<CompressedTransaction>],
             spent_utxos_by_outpoint: &HashMap<transparent::OutPoint, transparent::Utxo>,
         ) {
             for (tx_index, transaction) in transactions.iter().enumerate() {
@@ -715,7 +715,7 @@ impl DiskWriteBatch {
         zebra_db: &ZebraDb,
         network: &Network,
         spending_tx_location: TransactionLocation,
-        transaction: &Transaction,
+        transaction: &CompressedTransaction,
         spent_utxos_by_outpoint: &HashMap<transparent::OutPoint, transparent::Utxo>,
         #[cfg(feature = "indexer")] out_loc_by_outpoint: &HashMap<
             transparent::OutPoint,

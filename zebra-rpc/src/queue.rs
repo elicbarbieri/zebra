@@ -23,7 +23,7 @@ use zebra_chain::{
     block::Height,
     chain_tip::ChainTip,
     parameters::{Network, NetworkUpgrade},
-    transaction::{Transaction, TransactionExt, UnminedTx, UnminedTxId},
+    transaction::{CompressedTransaction, TransactionExt, UnminedTx, UnminedTxId},
 };
 use zebra_node_services::{
     mempool::{Gossip, Request, Response},
@@ -48,7 +48,7 @@ const NO_CHAIN_TIP_HEIGHT: Height = Height(1);
 /// The queue is a container of transactions that are going to be
 /// sent to the mempool again.
 pub struct Queue {
-    transactions: IndexMap<UnminedTxId, (Arc<Transaction>, Instant)>,
+    transactions: IndexMap<UnminedTxId, (Arc<CompressedTransaction>, Instant)>,
 }
 
 #[derive(Debug)]
@@ -78,7 +78,7 @@ impl Queue {
     }
 
     /// Get the transactions in the queue.
-    pub fn transactions(&self) -> IndexMap<UnminedTxId, (Arc<Transaction>, Instant)> {
+    pub fn transactions(&self) -> IndexMap<UnminedTxId, (Arc<CompressedTransaction>, Instant)> {
         self.transactions.clone()
     }
 
@@ -112,7 +112,7 @@ impl Runner {
     }
 
     /// Get the queue transactions as a `Vec` of transactions.
-    fn transactions_as_vec(&self) -> Vec<Arc<Transaction>> {
+    fn transactions_as_vec(&self) -> Vec<Arc<CompressedTransaction>> {
         let transactions = self.queue.transactions();
         transactions.iter().map(|t| t.1 .0.clone()).collect()
     }
@@ -304,7 +304,7 @@ impl Runner {
     /// Returns the transaction ids that were retried.
     async fn retry<Mempool>(
         mempool: Mempool,
-        transactions: Vec<Arc<Transaction>>,
+        transactions: Vec<Arc<CompressedTransaction>>,
     ) -> HashSet<UnminedTxId>
     where
         Mempool: Service<Request, Response = Response, Error = BoxError> + Clone + 'static,

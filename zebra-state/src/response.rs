@@ -14,7 +14,7 @@ use zebra_chain::{
     orchard, sapling,
     serialization::DateTime32,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{self, Transaction},
+    transaction::{self, CompressedTransaction},
     transparent,
     value_balance::ValueBalance,
 };
@@ -63,7 +63,7 @@ pub enum Response {
     BlockLocator(Vec<block::Hash>),
 
     /// Response to [`Request::Transaction`] with the specified transaction.
-    Transaction(Option<Arc<Transaction>>),
+    Transaction(Option<Arc<CompressedTransaction>>),
 
     /// Response to [`Request::AnyChainTransaction`] with the specified transaction.
     AnyChainTransaction(Option<AnyTx>),
@@ -155,10 +155,10 @@ pub enum AnyTx {
     /// A transaction in the best chain.
     Mined(MinedTx),
     /// A transaction in a side chain, and the hash of the block it is in.
-    Side((Arc<Transaction>, block::Hash)),
+    Side((Arc<CompressedTransaction>, block::Hash)),
 }
 
-impl From<AnyTx> for Arc<Transaction> {
+impl From<AnyTx> for Arc<CompressedTransaction> {
     fn from(any_tx: AnyTx) -> Self {
         match any_tx {
             AnyTx::Mined(mined_tx) => mined_tx.tx,
@@ -171,7 +171,7 @@ impl From<AnyTx> for Arc<Transaction> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MinedTx {
     /// The transaction.
-    pub tx: Arc<Transaction>,
+    pub tx: Arc<CompressedTransaction>,
 
     /// The transaction height.
     pub height: block::Height,
@@ -197,7 +197,7 @@ pub struct MinedTx {
 impl MinedTx {
     /// Creates a new [`MinedTx`]
     pub fn new(
-        tx: Arc<Transaction>,
+        tx: Arc<CompressedTransaction>,
         height: block::Height,
         confirmations: u32,
         block_time: DateTime<Utc>,

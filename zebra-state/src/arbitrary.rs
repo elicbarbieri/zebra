@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zebra_chain::{
     amount::{Amount, DeferredPoolBalanceChange},
     block::{self, Block},
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
 };
@@ -77,7 +77,7 @@ impl ContextuallyVerifiedBlock {
             .transactions
             .iter()
             .map(AsRef::as_ref)
-            .flat_map(Transaction::inputs)
+            .flat_map(CompressedTransaction::inputs)
             .flat_map(|input| input.outpoint())
             .map(|outpoint| (outpoint, zero_utxo.clone()))
             .collect();

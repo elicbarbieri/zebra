@@ -1195,7 +1195,7 @@ fn nsm_subsidy_tracks_the_nsm_value_balance() -> Result<()> {
             },
             testnet::{ConfiguredActivationHeights, RegtestParameters},
         },
-        transaction::{self, LockTime, Transaction},
+        transaction::{self, CompressedTransaction, LockTime, TransactionTestExt},
     };
 
     use crate::ValidateContextError;
@@ -1258,11 +1258,11 @@ fn nsm_subsidy_tracks_the_nsm_value_balance() -> Result<()> {
 
     // The transactions in the block at `height`, which spend that block's funding outputs and pay
     // `FEES`.
-    let spends = |height: Height| -> Vec<Arc<Transaction>> {
+    let spends = |height: Height| -> Vec<Arc<CompressedTransaction>> {
         funding_outpoints(height)
             .zip(FEES)
             .map(|(outpoint, fee)| {
-                Arc::new(Transaction::test_v4(
+                Arc::new(CompressedTransaction::test_v4(
                     vec![transparent::Input::PrevOut {
                         outpoint,
                         unlock_script: transparent::Script::new(&[]),
@@ -1286,7 +1286,7 @@ fn nsm_subsidy_tracks_the_nsm_value_balance() -> Result<()> {
     let block = |height: Height,
                  previous_block_hash,
                  coinbase_value,
-                 transactions: Vec<Arc<Transaction>>|
+                 transactions: Vec<Arc<CompressedTransaction>>|
      -> Arc<Block> {
         let mut block = zebra_test::vectors::BLOCK_MAINNET_347499_BYTES
             .zcash_deserialize_into::<Block>()
@@ -1295,7 +1295,7 @@ fn nsm_subsidy_tracks_the_nsm_value_balance() -> Result<()> {
         let header = Arc::make_mut(&mut block.header);
         header.time += Duration::minutes(height.0.into());
 
-        block.transactions = vec![Arc::new(Transaction::test_v4(
+        block.transactions = vec![Arc::new(CompressedTransaction::test_v4(
             vec![transparent::Input::Coinbase {
                 height,
                 data: vec![0],

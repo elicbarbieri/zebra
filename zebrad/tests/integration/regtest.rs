@@ -7,7 +7,7 @@ use zebra_chain::{
     block::{genesis::regtest_genesis_block, Block, Height},
     parameters::{testnet::ConfiguredActivationHeights, Network},
     serialization::ZcashSerialize as _,
-    transaction::TransactionExt,
+    transaction::{TransactionExt, TransactionTestExt},
     transparent,
 };
 use zebra_node_services::rpc_client::RpcRequestClient;

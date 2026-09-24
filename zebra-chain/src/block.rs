@@ -11,7 +11,7 @@ use crate::{
     sapling,
     serialization::TrustedPreallocate,
     sprout,
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
     transparent,
     value_balance::{ValueBalance, ValueBalanceError},
 };
@@ -53,7 +53,11 @@ pub struct Block {
     /// The block header, containing block metadata.
     pub header: Arc<Header>,
     /// The block transactions.
-    pub transactions: Vec<Arc<Transaction>>,
+    #[cfg_attr(
+        any(test, feature = "proptest-impl", feature = "elasticsearch"),
+        serde(serialize_with = "crate::transaction::serialize_transactions")
+    )]
+    pub transactions: Vec<Arc<CompressedTransaction>>,
 }
 
 impl fmt::Display for Block {

@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tracing::trace;
-use zebra_chain::transaction::{Transaction, TransactionExt};
+use zebra_chain::transaction::{CompressedTransaction, TransactionExt};
 
 use crate::{
     error::DuplicateNullifierError,
@@ -94,7 +94,7 @@ where
 }
 
 /// Reject double-spends of nullifiers:
-/// - one from this [`Transaction`], and the other already committed to the
+/// - one from this [`CompressedTransaction`], and the other already committed to the
 ///   provided non-finalized [`Chain`] or [`ZebraDb`].
 ///
 /// # Consensus
@@ -105,11 +105,13 @@ where
 /// > even if they have the same bit pattern.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#nullifierset>
+///
+/// [`CompressedTransaction`]: zebra_chain::transaction::CompressedTransaction
 #[tracing::instrument(skip_all)]
 pub(crate) fn tx_no_duplicates_in_chain(
     finalized_chain: &ZebraDb,
     non_finalized_chain: Option<&Arc<Chain>>,
-    transaction: &Arc<Transaction>,
+    transaction: &Arc<CompressedTransaction>,
 ) -> Result<(), ValidateContextError> {
     // All the nullifier accessors yield owned nullifiers.
     find_duplicate_nullifier(
@@ -146,7 +148,7 @@ pub(crate) fn tx_no_duplicates_in_chain(
 /// Reject double-spends of nullifiers:
 /// - both within the same `JoinSplit` (sprout only),
 /// - from different `JoinSplit`s, Sapling spends or Orchard actions in this
-///   [`Transaction`]'s shielded data, or
+///   [`CompressedTransaction`]'s shielded data, or
 /// - one from this shielded data, and another from:
 ///   - a previous transaction in this [`Block`](zebra_chain::block::Block), or
 ///   - a previous block in this non-finalized
@@ -169,6 +171,8 @@ pub(crate) fn tx_no_duplicates_in_chain(
 /// different pools have nullifiers with same bit pattern, they won't be
 /// considered the same when determining uniqueness. This is enforced by the
 /// callers of this function.
+///
+/// [`CompressedTransaction`]: zebra_chain::transaction::CompressedTransaction
 #[tracing::instrument(skip(chain_nullifiers, shielded_data_nullifiers))]
 pub(crate) fn add_to_non_finalized_chain_unique<NullifierT>(
     chain_nullifiers: &mut HashMap<NullifierT, SpendingTransactionId>,

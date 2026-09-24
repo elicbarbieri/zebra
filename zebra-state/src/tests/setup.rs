@@ -11,7 +11,7 @@ use zebra_chain::{
         NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::{LockTime, Transaction, TransactionExt},
+    transaction::{CompressedTransaction, LockTime, TransactionExt, TransactionTestExt},
 };
 
 use crate::{
@@ -128,13 +128,15 @@ pub(crate) fn new_state_with_mainnet_genesis(
 /// Return a `Transaction::V4` with the coinbase data from `coinbase`.
 ///
 /// Used to convert a coinbase transaction to a version that the non-finalized state will accept.
-pub(crate) fn transaction_v4_from_coinbase(coinbase: &Transaction) -> Transaction {
+pub(crate) fn transaction_v4_from_coinbase(
+    coinbase: &CompressedTransaction,
+) -> CompressedTransaction {
     assert!(
         !coinbase.has_sapling_shielded_data(),
         "conversion assumes sapling shielded data is None"
     );
 
-    Transaction::test_v4(
+    CompressedTransaction::test_v4(
         coinbase.inputs().to_vec(),
         coinbase.outputs().to_vec(),
         coinbase.lock_time().unwrap_or_else(LockTime::unlocked),

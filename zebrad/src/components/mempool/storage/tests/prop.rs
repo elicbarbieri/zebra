@@ -13,7 +13,10 @@ use zebra_chain::{
     orchard,
     parameters::NetworkUpgrade,
     sapling, sprout,
-    transaction::{self, Transaction, TransactionExt, UnminedTxId, VerifiedUnminedTx},
+    transaction::{
+        self, arbitrary::TransactionArbitrary, CompressedTransaction, TransactionExt,
+        TransactionTestExt, UnminedTxId, VerifiedUnminedTx,
+    },
     transparent, LedgerState,
 };
 
@@ -423,30 +426,22 @@ proptest! {
 enum SpendConflictTestInput {
     /// Test V4 transactions to include Sprout nullifier conflicts.
     V4 {
-        #[proptest(
-            strategy = "Transaction::v4_strategy(LedgerState::default()).prop_map(DisplayToDebug)"
-        )]
-        first: DisplayToDebug<Transaction>,
+        #[proptest(strategy = "CompressedTransaction::v4_strategy(LedgerState::default())")]
+        first: CompressedTransaction,
 
-        #[proptest(
-            strategy = "Transaction::v4_strategy(LedgerState::default()).prop_map(DisplayToDebug)"
-        )]
-        second: DisplayToDebug<Transaction>,
+        #[proptest(strategy = "CompressedTransaction::v4_strategy(LedgerState::default())")]
+        second: CompressedTransaction,
 
         conflict: SpendConflictForTransactionV4,
     },
 
     /// Test V5 transactions to include Orchard nullifier conflicts.
     V5 {
-        #[proptest(
-            strategy = "Transaction::v5_strategy(LedgerState::default()).prop_map(DisplayToDebug)"
-        )]
-        first: DisplayToDebug<Transaction>,
+        #[proptest(strategy = "CompressedTransaction::v5_strategy(LedgerState::default())")]
+        first: CompressedTransaction,
 
-        #[proptest(
-            strategy = "Transaction::v5_strategy(LedgerState::default()).prop_map(DisplayToDebug)"
-        )]
-        second: DisplayToDebug<Transaction>,
+        #[proptest(strategy = "CompressedTransaction::v5_strategy(LedgerState::default())")]
+        second: CompressedTransaction,
 
         conflict: SpendConflictForTransactionV5,
     },
@@ -478,12 +473,12 @@ impl SpendConflictTestInput {
             }
         };
 
-        standardize_transaction(&mut first.0);
-        standardize_transaction(&mut second.0);
+        standardize_transaction(&mut first);
+        standardize_transaction(&mut second);
 
         (
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(first.0).into(),
+                std::sync::Arc::new(first).into(),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -492,7 +487,7 @@ impl SpendConflictTestInput {
             )
             .expect("verification should pass"),
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(second.0).into(),
+                std::sync::Arc::new(second).into(),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -512,12 +507,12 @@ impl SpendConflictTestInput {
 
         Self::remove_transparent_conflicts(&mut first, &mut second);
 
-        standardize_transaction(&mut first.0);
-        standardize_transaction(&mut second.0);
+        standardize_transaction(&mut first);
+        standardize_transaction(&mut second);
 
         (
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(first.0).into(),
+                std::sync::Arc::new(first).into(),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -526,7 +521,7 @@ impl SpendConflictTestInput {
             )
             .expect("verification should pass"),
             VerifiedUnminedTx::new(
-                std::sync::Arc::new(second.0).into(),
+                std::sync::Arc::new(second).into(),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
@@ -539,7 +534,10 @@ impl SpendConflictTestInput {
 
     /// Find transparent outpoint spends shared by two transactions, then remove them from the
     /// transactions.
-    fn remove_transparent_conflicts(first: &mut Transaction, second: &mut Transaction) {
+    fn remove_transparent_conflicts(
+        first: &mut CompressedTransaction,
+        second: &mut CompressedTransaction,
+    ) {
         let first_spent_outpoints: HashSet<_> = first.spent_outpoints().collect();
         let second_spent_outpoints: HashSet<_> = second.spent_outpoints().collect();
 
@@ -548,7 +546,10 @@ impl SpendConflictTestInput {
             .collect();
 
         // Rebuild each transaction with filtered inputs (removing conflicting outpoints).
-        for transaction in [first as &mut Transaction, second as &mut Transaction] {
+        for transaction in [
+            first as &mut CompressedTransaction,
+            second as &mut CompressedTransaction,
+        ] {
             let filtered_inputs: Vec<_> = transaction
                 .inputs()
                 .into_iter()
@@ -589,7 +590,7 @@ struct TransparentSpendConflict {
 
 impl SpendConflictForTransactionV4 {
     /// Apply a spend conflict to a V4 transaction.
-    pub fn apply_to(self, transaction_v4: &mut Transaction) {
+    pub fn apply_to(self, transaction_v4: &mut CompressedTransaction) {
         use SpendConflictForTransactionV4::*;
         match self {
             Transparent(transparent_conflict) => {
@@ -606,7 +607,7 @@ impl SpendConflictForTransactionV4 {
 
 impl SpendConflictForTransactionV5 {
     /// Apply a spend conflict to a V5 transaction.
-    pub fn apply_to(self, transaction_v5: &mut Transaction) {
+    pub fn apply_to(self, transaction_v5: &mut CompressedTransaction) {
         use SpendConflictForTransactionV5::*;
         match self {
             Transparent(transparent_conflict) => {
@@ -647,7 +648,7 @@ struct OrchardSpendConflict {
 
 impl SproutSpendConflict {
     /// Give `transaction` a JoinSplit revealing this conflict's nullifier.
-    fn apply_to(self, transaction: &mut Transaction) {
+    fn apply_to(self, transaction: &mut CompressedTransaction) {
         let conflict = self.new_joinsplit_data.joinsplits[0].clone();
         let bundle = match transaction.sprout_bundle() {
             Some(existing) => {
@@ -670,7 +671,7 @@ impl SaplingSpendConflict {
     /// Give `transaction` a Sapling spend revealing this conflict's nullifier.
     ///
     /// `shared_anchor` = re-anchor onto the bundle's anchor (v5+)
-    fn apply_to(self, transaction: &mut Transaction, shared_anchor: bool) {
+    fn apply_to(self, transaction: &mut CompressedTransaction, shared_anchor: bool) {
         let bundle = match transaction.sapling_bundle() {
             Some(bundle) => bundle
                 .clone()
@@ -702,7 +703,7 @@ impl SaplingSpendConflict {
 
 impl OrchardSpendConflict {
     /// Give `transaction` an Orchard action revealing this conflict's nullifier.
-    fn apply_to(self, transaction: &mut Transaction) {
+    fn apply_to(self, transaction: &mut CompressedTransaction) {
         let conflict_nullifier = *self.new_bundle.actions().first().nullifier();
         let bundle = match transaction.orchard_bundle() {
             Some(bundle) => {

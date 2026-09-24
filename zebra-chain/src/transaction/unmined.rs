@@ -21,7 +21,7 @@ use crate::{
     amount::{Amount, NonNegative},
     block::Height,
     serialization::ZcashSerialize,
-    transaction::{AuthDigest, Hash, Transaction, WtxId},
+    transaction::{AuthDigest, CompressedTransaction, Hash, WtxId},
     transparent,
 };
 
@@ -130,8 +130,8 @@ impl fmt::Display for UnminedTxId {
 // `From<&Transaction>` and `From<Arc<Transaction>>` for `UnminedTxId`
 // are defined in transaction.rs, where the version dispatch lives.
 
-impl From<Transaction> for UnminedTxId {
-    fn from(transaction: Transaction) -> Self {
+impl From<CompressedTransaction> for UnminedTxId {
+    fn from(transaction: CompressedTransaction) -> Self {
         // use the ref implementation, to avoid cloning the transaction
         UnminedTxId::from(&transaction)
     }
@@ -216,7 +216,7 @@ impl UnminedTxId {
 #[derive(Clone, Eq, PartialEq)]
 pub struct UnminedTx {
     /// The unmined transaction itself.
-    pub transaction: Arc<Transaction>,
+    pub transaction: Arc<CompressedTransaction>,
 
     /// A unique identifier for this unmined transaction.
     pub id: UnminedTxId,
@@ -244,8 +244,8 @@ impl fmt::Display for UnminedTx {
     }
 }
 
-impl From<Arc<Transaction>> for UnminedTx {
-    fn from(transaction: Arc<Transaction>) -> Self {
+impl From<Arc<CompressedTransaction>> for UnminedTx {
+    fn from(transaction: Arc<CompressedTransaction>) -> Self {
         let size = transaction.zcash_serialized_size();
         let conventional_fee = zip317::conventional_fee(&transaction);
 
@@ -258,8 +258,8 @@ impl From<Arc<Transaction>> for UnminedTx {
     }
 }
 
-impl From<&Arc<Transaction>> for UnminedTx {
-    fn from(transaction: &Arc<Transaction>) -> Self {
+impl From<&Arc<CompressedTransaction>> for UnminedTx {
+    fn from(transaction: &Arc<CompressedTransaction>) -> Self {
         let size = transaction.zcash_serialized_size();
         let conventional_fee = zip317::conventional_fee(transaction);
 

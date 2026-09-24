@@ -259,9 +259,9 @@ type SaplingBundleBytes = sapling_crypto::bundle::BundleBytes<
 type OrchardBundleBytes =
     orchard::BundleBytes<orchard::bundle::Authorized, zcash_protocol::value::ZatBalance>;
 
-/// [`transaction_data_from_parts`] on the compressed tier (the stored [`Transaction`] form)
+/// [`transaction_data_from_parts`] on the compressed tier (the stored [`CompressedTransaction`] form)
 ///
-/// [`Transaction`]: crate::transaction::Transaction
+/// [`CompressedTransaction`]: crate::transaction::CompressedTransaction
 #[cfg(any(test, feature = "proptest-impl"))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compressed_data_from_parts(

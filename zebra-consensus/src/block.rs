@@ -217,7 +217,7 @@ pub struct ShieldedActionCounts {
 
 impl ShieldedActionCounts {
     /// Returns the counts for `transaction`.
-    pub fn from_transaction(transaction: &zebra_chain::transaction::Transaction) -> Self {
+    pub fn from_transaction(transaction: &impl TransactionExt) -> Self {
         Self {
             orchard_actions: transaction.orchard_actions().count(),
             ironwood_actions: transaction.ironwood_actions().count(),

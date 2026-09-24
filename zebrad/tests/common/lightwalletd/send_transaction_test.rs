@@ -25,7 +25,7 @@ use zebra_chain::{
     block::Block,
     parameters::Network::*,
     serialization::ZcashSerialize,
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
 };
 use zebra_node_services::rpc_client::RpcRequestClient;
 use zebra_rpc::queue::CHANNEL_AND_QUEUE_CAPACITY;
@@ -329,7 +329,9 @@ async fn send_transactions_from_block(
 }
 
 /// Prepare a request to send to lightwalletd that contains a transaction to be sent.
-fn prepare_send_transaction_request(transaction: Arc<Transaction>) -> wallet_grpc::RawTransaction {
+fn prepare_send_transaction_request(
+    transaction: Arc<CompressedTransaction>,
+) -> wallet_grpc::RawTransaction {
     let transaction_bytes = transaction.zcash_serialize_to_vec().unwrap();
 
     wallet_grpc::RawTransaction {
@@ -341,14 +343,14 @@ fn prepare_send_transaction_request(transaction: Arc<Transaction>) -> wallet_grp
 trait SendTransactionMethod {
     async fn send_transaction(
         &self,
-        transaction: &Arc<Transaction>,
+        transaction: &Arc<CompressedTransaction>,
     ) -> Result<zebra_rpc::methods::SendRawTransactionResponse, BoxError>;
 }
 
 impl SendTransactionMethod for RpcRequestClient {
     async fn send_transaction(
         &self,
-        transaction: &Arc<Transaction>,
+        transaction: &Arc<CompressedTransaction>,
     ) -> Result<zebra_rpc::methods::SendRawTransactionResponse, BoxError> {
         let tx_data = hex::encode(transaction.zcash_serialize_to_vec()?);
         self.json_result_from_call("sendrawtransaction", format!(r#"["{tx_data}"]"#))

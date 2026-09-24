@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zcash_protocol::value::ZatBalance;
 use zcash_transparent::sighash::SighashType;
 
-use super::Transaction;
+use super::CompressedTransaction;
 
 use crate::parameters::NetworkUpgrade;
 use crate::{transparent, Error};
@@ -91,7 +91,7 @@ impl SigHasher {
     /// - If `nu` doesn't contain a consensus branch id convertible to its `librustzcash`
     ///   equivalent.
     pub fn new(
-        trans: &Transaction,
+        trans: &CompressedTransaction,
         nu: NetworkUpgrade,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<Self, Error> {
@@ -100,9 +100,9 @@ impl SigHasher {
         })
     }
 
-    /// [`SigHasher::new`] reusing points [`Transaction::decompress`] already checked
+    /// [`SigHasher::new`] reusing points [`CompressedTransaction::decompress`] already checked
     pub fn from_decompressed(
-        decompressed: zcash_primitives::transaction::Transaction,
+        decompressed: &zcash_primitives::transaction::Transaction,
         nu: NetworkUpgrade,
         all_previous_outputs: Arc<Vec<transparent::Output>>,
     ) -> Result<Self, Error> {

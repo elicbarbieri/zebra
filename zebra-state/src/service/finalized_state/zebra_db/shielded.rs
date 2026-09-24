@@ -24,7 +24,7 @@ use zebra_chain::{
     parameters::NetworkUpgrade,
     sapling, sprout,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
 };
 
 use crate::{
@@ -645,7 +645,7 @@ impl DiskWriteBatch {
     pub fn prepare_nullifier_batch(
         &mut self,
         zebra_db: &ZebraDb,
-        transaction: &Transaction,
+        transaction: &CompressedTransaction,
         #[cfg(feature = "indexer")] transaction_location: TransactionLocation,
     ) {
         let db = &zebra_db.db;
