@@ -16,7 +16,7 @@ use zebra_chain::{
     block,
     chain_tip::ChainTip,
     parameters::{Network, NetworkUpgrade},
-    transaction::{self, Transaction},
+    transaction::{self, CompressedTransaction},
 };
 
 use crate::{
@@ -60,7 +60,11 @@ pub struct ChainTipBlock {
     pub time: DateTime<Utc>,
 
     /// The block transactions.
-    pub transactions: Vec<Arc<Transaction>>,
+    #[cfg_attr(
+        any(test, feature = "proptest-impl"),
+        proptest(strategy = "arbitrary_transactions()")
+    )]
+    pub transactions: Vec<Arc<CompressedTransaction>>,
 
     /// The mined transaction IDs of the transactions in `block`,
     /// in the same order as `block.transactions`.
@@ -74,6 +78,19 @@ pub struct ChainTipBlock {
     /// If the best chain fork has changed, or some blocks have been skipped,
     /// this hash will be different to the last returned `ChainTipBlock.hash`.
     pub previous_block_hash: block::Hash,
+}
+
+/// Transactions for an arbitrary [`ChainTipBlock`]
+#[cfg(any(test, feature = "proptest-impl"))]
+fn arbitrary_transactions(
+) -> impl proptest::strategy::Strategy<Value = Vec<Arc<CompressedTransaction>>> {
+    use proptest::prelude::*;
+    use zebra_chain::{block::LedgerState, transaction::arbitrary::TransactionArbitrary};
+
+    proptest::collection::vec(
+        CompressedTransaction::strategy(LedgerState::default()).prop_map(Arc::new),
+        0..100,
+    )
 }
 
 impl fmt::Display for ChainTipBlock {

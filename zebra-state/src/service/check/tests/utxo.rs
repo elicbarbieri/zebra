@@ -9,7 +9,10 @@ use zebra_chain::{
     block::{Block, Height},
     fmt::TypeNameToDebug,
     serialization::ZcashDeserializeInto,
-    transaction::{self, LockTime, Transaction, TransactionExt},
+    transaction::{
+        self, arbitrary::TransactionArbitrary, CompressedTransaction, LockTime, TransactionExt,
+        TransactionTestExt,
+    },
     transparent,
 };
 
@@ -132,7 +135,7 @@ fn remaining_transaction_value_scales_linearly() {
     let one_zatoshi: Amount<zebra_chain::amount::NonNegative> =
         1.try_into().expect("1 zatoshi is valid");
 
-    let coinbase = Arc::new(Transaction::test_v4(
+    let coinbase = Arc::new(CompressedTransaction::test_v4(
         vec![transparent::Input::Coinbase {
             height: Height(1),
             data: Vec::new(),
@@ -163,7 +166,7 @@ fn remaining_transaction_value_scales_linearly() {
             lock_script: transparent::Script::new(&[]),
         };
 
-        let tx = Transaction::test_v4(
+        let tx = CompressedTransaction::test_v4(
             vec![transparent::Input::PrevOut {
                 outpoint,
                 unlock_script: transparent::Script::new(&[]),
@@ -1045,11 +1048,11 @@ fn transaction_v4_with_transparent_data(
     inputs: impl IntoIterator<Item = transparent::Input>,
     spent_outputs: impl IntoIterator<Item = (transparent::OutPoint, transparent::Output)>,
     outputs: impl IntoIterator<Item = transparent::Output>,
-) -> Transaction {
+) -> CompressedTransaction {
     let inputs: Vec<_> = inputs.into_iter().collect();
     let outputs: Vec<_> = outputs.into_iter().collect();
 
-    let mut transaction = Transaction::test_v4(
+    let mut transaction = CompressedTransaction::test_v4(
         inputs,
         outputs,
         LockTime::min_lock_time_timestamp(),

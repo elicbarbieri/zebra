@@ -1,4 +1,4 @@
-//! Provides high-level access to database [`Block`]s and [`Transaction`]s.
+//! Provides high-level access to database [`Block`]s and [`CompressedTransaction`]s.
 //!
 //! This module makes sure that:
 //! - all disk writes happen inside a RocksDB transaction, and
@@ -26,7 +26,7 @@ use zebra_chain::{
     parameters::{Network, GENESIS_PREVIOUS_BLOCK_HASH},
     sapling,
     serialization::{CompactSizeMessage, TrustedPreallocate, ZcashSerialize as _},
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
 };
@@ -186,7 +186,7 @@ impl ZebraDb {
         let header = Arc::<block::Header>::from_bytes(raw_header.raw_bytes());
         let txs: Vec<_> = raw_txs
             .iter()
-            .map(|raw_tx| Arc::<Transaction>::from_bytes(raw_tx.raw_bytes()))
+            .map(|raw_tx| Arc::<CompressedTransaction>::from_bytes(raw_tx.raw_bytes()))
             .collect();
 
         // Compute the size of the block from the size of header and size of
@@ -321,13 +321,13 @@ impl ZebraDb {
 
     // Read transaction methods
 
-    /// Returns the [`Transaction`] with [`transaction::Hash`], and its [`Height`],
+    /// Returns the [`CompressedTransaction`] with [`transaction::Hash`], and its [`Height`],
     /// if a transaction with that hash exists in the finalized chain.
     #[allow(clippy::unwrap_in_result)]
     pub fn transaction(
         &self,
         hash: transaction::Hash,
-    ) -> Option<(Arc<Transaction>, Height, DateTime<Utc>)> {
+    ) -> Option<(Arc<CompressedTransaction>, Height, DateTime<Utc>)> {
         let tx_by_loc = self.db.cf_handle("tx_by_loc").unwrap();
 
         let transaction_location = self.transaction_location(hash)?;
@@ -341,19 +341,19 @@ impl ZebraDb {
             .and_then(|tx| block_time.map(|time| (tx, transaction_location.height, time)))
     }
 
-    /// Returns an iterator of all [`Transaction`]s for a provided block height in finalized state.
+    /// Returns an iterator of all [`CompressedTransaction`]s for a provided block height in finalized state.
     #[allow(clippy::unwrap_in_result)]
     pub fn transactions_by_height(
         &self,
         height: Height,
-    ) -> impl Iterator<Item = (TransactionLocation, Transaction)> + '_ {
+    ) -> impl Iterator<Item = (TransactionLocation, CompressedTransaction)> + '_ {
         self.transactions_by_location_range(
             TransactionLocation::min_for_height(height)
                 ..=TransactionLocation::max_for_height(height),
         )
     }
 
-    /// Returns an iterator of all raw [`Transaction`]s for a provided block
+    /// Returns an iterator of all raw [`CompressedTransaction`]s for a provided block
     /// height in finalized state.
     #[allow(clippy::unwrap_in_result)]
     fn raw_transactions_by_height(
@@ -366,13 +366,13 @@ impl ZebraDb {
         )
     }
 
-    /// Returns an iterator of all [`Transaction`]s in the provided range
+    /// Returns an iterator of all [`CompressedTransaction`]s in the provided range
     /// of [`TransactionLocation`]s in finalized state.
     #[allow(clippy::unwrap_in_result)]
     pub fn transactions_by_location_range<R>(
         &self,
         range: R,
-    ) -> impl Iterator<Item = (TransactionLocation, Transaction)> + '_
+    ) -> impl Iterator<Item = (TransactionLocation, CompressedTransaction)> + '_
     where
         R: RangeBounds<TransactionLocation>,
     {
@@ -380,7 +380,7 @@ impl ZebraDb {
         self.db.zs_forward_range_iter(tx_by_loc, range)
     }
 
-    /// Returns an iterator of all raw [`Transaction`]s in the provided range
+    /// Returns an iterator of all raw [`CompressedTransaction`]s in the provided range
     /// of [`TransactionLocation`]s in finalized state.
     #[allow(clippy::unwrap_in_result)]
     pub fn raw_transactions_by_location_range<R>(
@@ -446,7 +446,7 @@ impl ZebraDb {
         // Manually fetch the entire block's transaction hashes
         let mut transaction_hashes = Vec::new();
 
-        for tx_index in 0..=Transaction::max_allocation() {
+        for tx_index in 0..=CompressedTransaction::max_allocation() {
             let tx_loc = TransactionLocation::from_u64(height, tx_index);
 
             if let Some(tx_hash) = self.db.zs_get(&hash_by_tx_loc, &tx_loc) {

@@ -17,7 +17,7 @@ use zebra_chain::{
         },
         Network, NetworkUpgrade,
     },
-    transaction::{self, Transaction, TransactionExt},
+    transaction::{self, CompressedTransaction, TransactionExt},
     transparent::{Address, Output},
     work::{
         difficulty::{ExpandedDifficulty, ParameterDifficulty as _},
@@ -36,7 +36,9 @@ use crate::{error::*, funding_stream_address};
 /// > transaction as the first transaction in the block.
 ///
 /// <https://zips.z.cash/protocol/protocol.pdf#coinbasetransactions>
-pub fn coinbase_is_first(block: &Block) -> Result<Arc<transaction::Transaction>, BlockError> {
+pub fn coinbase_is_first(
+    block: &Block,
+) -> Result<Arc<transaction::CompressedTransaction>, BlockError> {
     // # Consensus
     //
     // > A block MUST have at least one transaction
@@ -312,7 +314,7 @@ pub fn subsidy_is_valid(
 ///
 /// [7.1.2]: https://zips.z.cash/protocol/protocol.pdf#txnconsensus
 pub fn miner_fees_are_valid(
-    coinbase_tx: &Transaction,
+    coinbase_tx: &CompressedTransaction,
     height: Height,
     block_miner_fees: Amount<NonNegative>,
     expected_block_subsidy: Amount<NonNegative>,

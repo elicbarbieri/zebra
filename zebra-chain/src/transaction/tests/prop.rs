@@ -14,13 +14,16 @@ use crate::{
     block::Block,
     parameters::NetworkUpgrade,
     serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
-    transaction::arbitrary::MAX_ARBITRARY_ITEMS,
+    transaction::{
+        arbitrary::{TransactionArbitrary, MAX_ARBITRARY_ITEMS},
+        TransactionExt,
+    },
     LedgerState,
 };
 
 /// Assert that `tx` round-trips through the wire format, or is rejected by the parser if it
 /// is a coinbase transaction with Sapling spends.
-fn assert_transaction_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
+fn assert_transaction_roundtrip(tx: CompressedTransaction) -> Result<(), TestCaseError> {
     let has_coinbase_sapling_spends = tx.is_coinbase() && tx.sapling_spends().count() > 0;
 
     let data = tx.zcash_serialize_to_vec().expect("tx should serialize");
@@ -28,10 +31,10 @@ fn assert_transaction_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
     if has_coinbase_sapling_spends {
         // GHSA-rgwx-8r98-p34c fix: the parser now rejects coinbase
         // transactions with Sapling spends before allocating.
-        data.zcash_deserialize_into::<Transaction>()
+        data.zcash_deserialize_into::<CompressedTransaction>()
             .expect_err("coinbase with Sapling spends must be rejected");
     } else {
-        let tx2: Transaction = data
+        let tx2: CompressedTransaction = data
             .zcash_deserialize_into()
             .expect("randomized tx should deserialize");
 
@@ -49,7 +52,7 @@ fn assert_transaction_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
 
 proptest! {
     #[test]
-    fn transaction_roundtrip(tx in any::<Transaction>()) {
+    fn transaction_roundtrip(tx in CompressedTransaction::strategy(LedgerState::default())) {
         let _init_guard = zebra_test::init();
 
         assert_transaction_roundtrip(tx)?;
@@ -62,7 +65,7 @@ proptest! {
     #[test]
     fn transaction_roundtrip_nu6_3(
         tx in LedgerState::network_upgrade_strategy(NetworkUpgrade::Nu6_3, None, true)
-            .prop_flat_map(Transaction::arbitrary_with)
+            .prop_flat_map(CompressedTransaction::strategy)
     ) {
         let _init_guard = zebra_test::init();
 
@@ -160,7 +163,9 @@ fn arbitrary_transaction_version_strategy() -> Result<()> {
         .prop_flat_map(|transaction_version| {
             LedgerState::coinbase_strategy(None, transaction_version, false)
         })
-        .prop_flat_map(|ledger_state| Transaction::vec_strategy(ledger_state, MAX_ARBITRARY_ITEMS));
+        .prop_flat_map(|ledger_state| {
+            CompressedTransaction::vec_strategy(ledger_state, MAX_ARBITRARY_ITEMS)
+        });
 
     proptest!(|(transactions in strategy)| {
         let mut version = None;
@@ -213,7 +218,7 @@ fn arbitrary_transaction_versions_cover_each_era() -> Result<()> {
 
     for (network_upgrade, expected_versions) in eras {
         let strategy = LedgerState::network_upgrade_strategy(*network_upgrade, None, true)
-            .prop_flat_map(Transaction::arbitrary_with);
+            .prop_flat_map(CompressedTransaction::strategy);
 
         let mut seen_versions = HashSet::new();
         let mut seen_v6_orchard_bundle = false;

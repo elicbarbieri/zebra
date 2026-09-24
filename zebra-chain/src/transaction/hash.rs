@@ -41,7 +41,7 @@ use crate::serialization::{
 };
 use crate::transaction::TransactionExt;
 
-use super::{AuthDigest, Transaction};
+use super::{AuthDigest, CompressedTransaction};
 
 /// A transaction ID, which uniquely identifies mined v5 transactions,
 /// and all v1-v4 transactions.
@@ -72,8 +72,8 @@ impl AsRef<[u8; 32]> for Hash {
 // `From<&Transaction> for Hash` is defined in transaction.rs, where the txid is
 // delegated to `zcash_primitives`.
 
-impl From<Transaction> for Hash {
-    fn from(transaction: Transaction) -> Self {
+impl From<CompressedTransaction> for Hash {
+    fn from(transaction: CompressedTransaction) -> Self {
         // use the ref implementation, to avoid cloning the transaction
         Hash::from(&transaction)
     }
@@ -211,13 +211,13 @@ impl WtxId {
     }
 }
 
-impl From<&Transaction> for WtxId {
+impl From<&CompressedTransaction> for WtxId {
     /// Computes the witnessed transaction ID for a transaction.
     ///
     /// # Panics
     ///
     /// If passed a pre-v5 transaction.
-    fn from(transaction: &Transaction) -> Self {
+    fn from(transaction: &CompressedTransaction) -> Self {
         Self {
             id: transaction.hash(),
             auth_digest: transaction
@@ -227,8 +227,8 @@ impl From<&Transaction> for WtxId {
     }
 }
 
-impl From<Arc<Transaction>> for WtxId {
-    fn from(transaction: Arc<Transaction>) -> Self {
+impl From<Arc<CompressedTransaction>> for WtxId {
+    fn from(transaction: Arc<CompressedTransaction>) -> Self {
         transaction.as_ref().into()
     }
 }

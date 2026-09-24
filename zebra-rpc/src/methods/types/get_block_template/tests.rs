@@ -17,7 +17,7 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, TransactionExt},
+    transaction::{CompressedTransaction, TransactionExt},
 };
 
 use crate::client::TransactionTemplate;
@@ -86,7 +86,7 @@ fn coinbase() -> anyhow::Result<()> {
                     .as_ref()
                     // Deserialization contains checks for elementary consensus rules, which must
                     // pass.
-                    .zcash_deserialize_into::<Transaction>()?;
+                    .zcash_deserialize_into::<CompressedTransaction>()?;
                 }
             }
         }
@@ -374,7 +374,7 @@ fn coinbase_at_nu6_3_routes_shielded_output_to_ironwood() {
 
     let template = TransactionTemplate::new_coinbase(&net, height, &miner_params, Amount::zero())
         .expect("valid coinbase tx");
-    let coinbase: Transaction = template.data.as_ref().zcash_deserialize_into().unwrap();
+    let coinbase: CompressedTransaction = template.data.as_ref().zcash_deserialize_into().unwrap();
 
     // The coinbase is a v6 transaction with Ironwood shielded data and no Orchard shielded data.
     // ZIP-229: from NU6.3, coinbase MUST have an empty Orchard component.

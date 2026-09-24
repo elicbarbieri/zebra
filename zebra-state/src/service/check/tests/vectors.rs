@@ -62,8 +62,9 @@ fn test_sequential_height_check() {
 fn ironwood_block_auth_commitment_accepts_honest_body_and_detects_a_forgery() {
     use zebra_chain::{
         primitives::zcash_history::BlockCommitmentTreeRoots,
-        serialization::BytesInDisplayOrder as _, transaction::Transaction, transparent,
-        LedgerState,
+        serialization::BytesInDisplayOrder as _,
+        transaction::{CompressedTransaction, TransactionExt as _, TransactionTestExt as _},
+        transparent, LedgerState,
     };
     use zebra_test::prelude::{
         prop::{strategy::ValueTree as _, test_runner::TestRunner},
@@ -134,7 +135,7 @@ fn ironwood_block_auth_commitment_accepts_honest_body_and_detects_a_forgery() {
     // the txid, so this leaves the block hash unchanged: exactly the body an unauthenticated
     // peer can serve under a canonical header.
     let mut forged = block.clone();
-    let coinbase: &mut Transaction = Arc::make_mut(
+    let coinbase: &mut CompressedTransaction = Arc::make_mut(
         forged
             .transactions
             .first_mut()

@@ -8,7 +8,7 @@
 use zebra_chain::{
     block::{self, Height},
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction::{self, Transaction},
+    transaction::{self, CompressedTransaction},
 };
 
 use crate::service::finalized_state::disk_format::{
@@ -279,7 +279,7 @@ impl FromDisk for block::Hash {
 
 // Transaction trait impls
 
-impl IntoDisk for Transaction {
+impl IntoDisk for CompressedTransaction {
     type Bytes = Vec<u8>;
 
     fn as_bytes(&self) -> Self::Bytes {
@@ -288,7 +288,7 @@ impl IntoDisk for Transaction {
     }
 }
 
-impl FromDisk for Transaction {
+impl FromDisk for CompressedTransaction {
     fn from_bytes(bytes: impl AsRef<[u8]>) -> Self {
         let bytes = bytes.as_ref();
 

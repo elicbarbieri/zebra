@@ -13,7 +13,7 @@ use zebra_chain::{
     sapling,
     serialization::ZcashDeserializeInto,
     sprout,
-    transaction::{LockTime, Transaction},
+    transaction::{CompressedTransaction, LockTime, TransactionTestExt},
 };
 
 use crate::{
@@ -1234,14 +1234,14 @@ fn make_distinct_nullifiers<'until_modified, NullifierT>(
 fn transaction_v4_with_joinsplit_data(
     joinsplit_data: sprout::JoinSplitData,
     joinsplits: impl IntoIterator<Item = sprout::JoinSplit>,
-) -> Transaction {
+) -> CompressedTransaction {
     // zero public values, so the chain value pool checks pass
     let joinsplits = joinsplits
         .into_iter()
         .map(|joinsplit| sprout::arbitrary::with_values(&joinsplit, Amount::zero(), Amount::zero()))
         .collect();
 
-    Transaction::test_v4_with_sprout(Some(sprout::JoinSplitData {
+    CompressedTransaction::test_v4_with_sprout(Some(sprout::JoinSplitData {
         joinsplits,
         ..joinsplit_data
     }))
@@ -1261,8 +1261,8 @@ fn transaction_v4_with_joinsplit_data(
 fn transaction_v4_with_sapling_shielded_data(
     sapling_shielded_data: sapling::arbitrary::Bundle,
     spends: impl IntoIterator<Item = sapling::arbitrary::Spend>,
-) -> Transaction {
-    Transaction::test_v4_with_sapling(
+) -> CompressedTransaction {
+    CompressedTransaction::test_v4_with_sapling(
         Vec::new(),
         Vec::new(),
         LockTime::min_lock_time_timestamp(),
@@ -1285,8 +1285,8 @@ fn transaction_v4_with_sapling_shielded_data(
 fn transaction_v5_with_orchard_shielded_data(
     orchard_shielded_data: orchard::arbitrary::Bundle,
     actions: impl IntoIterator<Item = orchard::arbitrary::Action>,
-) -> Transaction {
-    Transaction::test_v5_with_orchard(
+) -> CompressedTransaction {
+    CompressedTransaction::test_v5_with_orchard(
         Nu5,
         Vec::new(),
         Vec::new(),

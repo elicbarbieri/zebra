@@ -1,7 +1,7 @@
 //! Contains impls of `ZcashSerialize`, `ZcashDeserialize` for all of the
 //! transaction types, so that all of the serialization logic is in one place.
 
-use std::{borrow::Borrow, io, sync::Arc};
+use std::{io, sync::Arc};
 
 use hex::FromHex;
 
@@ -73,7 +73,7 @@ pub const MIN_TRANSPARENT_TX_V5_SIZE: u64 = MIN_TRANSPARENT_TX_SIZE + 4 + 4;
 ///
 /// `tx` messages contain a single transaction, and `block` messages are limited to the maximum
 /// block size.
-impl TrustedPreallocate for Transaction {
+impl TrustedPreallocate for CompressedTransaction {
     fn max_allocation() -> u64 {
         // A transparent transaction is the smallest transaction variant
         MAX_BLOCK_BYTES / MIN_TRANSPARENT_TX_SIZE
@@ -104,7 +104,7 @@ impl TrustedPreallocate for transparent::Output {
 
 /// A serialized transaction.
 ///
-/// Stores bytes that are guaranteed to be deserializable into a [`Transaction`].
+/// Stores bytes that are guaranteed to be deserializable into a [`CompressedTransaction`].
 ///
 /// Sorts in lexicographic order of the transaction's serialized data.
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -135,15 +135,34 @@ impl fmt::Debug for SerializedTransaction {
     }
 }
 
-/// Build a [`SerializedTransaction`] by serializing a block.
-impl<B: Borrow<Transaction>> From<B> for SerializedTransaction {
-    fn from(tx: B) -> Self {
+/// Build a [`SerializedTransaction`] by serializing a transaction.
+///
+/// - Concrete impls, not `Borrow` (a foreign type's blanket impl overlaps `From<Vec<u8>>`)
+impl From<&CompressedTransaction> for SerializedTransaction {
+    fn from(tx: &CompressedTransaction) -> Self {
         SerializedTransaction {
             bytes: tx
-                .borrow()
                 .zcash_serialize_to_vec()
                 .expect("Writing to a `Vec` should never fail"),
         }
+    }
+}
+
+impl From<CompressedTransaction> for SerializedTransaction {
+    fn from(tx: CompressedTransaction) -> Self {
+        (&tx).into()
+    }
+}
+
+impl From<Arc<CompressedTransaction>> for SerializedTransaction {
+    fn from(tx: Arc<CompressedTransaction>) -> Self {
+        tx.as_ref().into()
+    }
+}
+
+impl From<&Arc<CompressedTransaction>> for SerializedTransaction {
+    fn from(tx: &Arc<CompressedTransaction>) -> Self {
+        tx.as_ref().into()
     }
 }
 

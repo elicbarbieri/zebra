@@ -31,8 +31,8 @@ use zebra_chain::{
     parameters::{Network, NetworkUpgrade},
     serialization::DateTime32,
     transaction::{
-        self, HashType, SigHash, Transaction, TransactionExt, TxVersion, UnminedTx, UnminedTxId,
-        VerifiedUnminedTx,
+        self, CompressedTransaction, HashType, SigHash, TransactionExt, TxVersion, UnminedTx,
+        UnminedTxId, VerifiedUnminedTx,
     },
     transparent,
 };
@@ -174,7 +174,7 @@ pub struct BlockRequest {
     /// so no need to recompute it in the verifier.
     pub transaction_hash: transaction::Hash,
     /// The transaction itself.
-    pub transaction: Arc<Transaction>,
+    pub transaction: Arc<CompressedTransaction>,
     /// Additional UTXOs which are known at the time of verification.
     pub known_utxos: Arc<HashMap<transparent::OutPoint, transparent::OrderedUtxo>>,
     /// The height of the block containing this transaction.
@@ -311,7 +311,7 @@ where
             // Point rules (deferred from parse), before any state lookup or policy check
             // - Only structural checks run first (eager parse ran it before those)
             // - Reused by `CachedFfiTransaction` (one decompression per verification)
-            let decompressed = tx.decompress()?;
+            let decompressed = CompressedTransaction::clone(&tx).decompress()?;
 
             tracing::trace!(?tx_id, "passed quick checks");
 
@@ -392,7 +392,7 @@ where
     /// Returns an `OutPoint -> Utxo` map and a vec of `Output`s in the same
     /// order as the matching inputs in `tx`.
     async fn block_spent_utxos(
-        tx: Arc<Transaction>,
+        tx: Arc<CompressedTransaction>,
         known_utxos: Arc<HashMap<transparent::OutPoint, transparent::OrderedUtxo>>,
         state: Timeout<ZS>,
     ) -> Result<
@@ -497,7 +497,7 @@ where
             // Point rules (deferred from parse), before any state lookup or policy check
             // - Only structural checks run first (eager parse ran it before those)
             // - Reused by `CachedFfiTransaction` (one decompression per verification)
-            let decompressed = tx.decompress()?;
+            let decompressed = CompressedTransaction::clone(&tx).decompress()?;
 
             tracing::trace!(?tx_id, "passed quick checks");
 
@@ -625,7 +625,7 @@ where
     ///
     /// Queries state only for time-based lock times.
     async fn verify_mempool_lock_time(
-        tx: &Transaction,
+        tx: &CompressedTransaction,
         height: block::Height,
         state: Timeout<ZS>,
     ) -> Result<(), TransactionError> {
@@ -679,7 +679,7 @@ where
     /// as the matching inputs in `tx`, and a vec of `OutPoint`s that were
     /// sourced from the mempool rather than the best chain.
     async fn mempool_spent_utxos(
-        tx: Arc<Transaction>,
+        tx: Arc<CompressedTransaction>,
         height: block::Height,
         state: Timeout<ZS>,
         mempool: Option<Timeout<Mempool>>,
@@ -789,7 +789,7 @@ where
 /// The `is_coinbase` branches are unreachable from mempool verification, which rejects
 /// coinbase transactions before calling this.
 fn check_common_consensus_rules(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     height: block::Height,
     network: &Network,
 ) -> Result<(), TransactionError> {
@@ -817,7 +817,7 @@ fn check_common_consensus_rules(
 
 /// Performs basic structural validation and Orchard-related network upgrade rules.
 fn check_structure_and_network_rules(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     height: block::Height,
     network: &Network,
 ) -> Result<(), TransactionError> {
@@ -890,7 +890,7 @@ fn check_structure_and_network_rules(
 
 /// Validates transaction invariants.
 fn check_transaction_invariants(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     height: block::Height,
     network: &Network,
 ) -> Result<(), TransactionError> {
@@ -923,7 +923,7 @@ fn check_transaction_invariants(
 /// mature and valid for the given height, or a [`TransactionError`] if the transaction
 /// spends transparent coinbase outputs that are immature and invalid for the given height.
 fn check_maturity_height(
-    tx: Arc<Transaction>,
+    tx: Arc<CompressedTransaction>,
     height: block::Height,
     network: &Network,
     spent_utxos: &HashMap<transparent::OutPoint, transparent::Utxo>,
@@ -951,7 +951,7 @@ fn check_maturity_height(
 /// Returns [`TransactionError::WrongVersion`] for V1-V3 transactions, which
 /// are not supported by any network upgrade Zebra verifies.
 fn dispatch_version_verification(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     nu: NetworkUpgrade,
     script_verifier: script::Verifier,
     cached_ffi_transaction: Arc<CachedFfiTransaction>,
@@ -1015,7 +1015,7 @@ fn dispatch_version_verification(
 /// - the transaction's `tx_id`, used by the Sapling verification cache
 #[allow(clippy::unwrap_in_result)]
 fn verify_v4_transaction(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     nu: NetworkUpgrade,
     script_verifier: script::Verifier,
     cached_ffi_transaction: Arc<CachedFfiTransaction>,
@@ -1038,7 +1038,7 @@ fn verify_v4_transaction(
 
 /// Verifies if a V4 `transaction` is supported by `network_upgrade`.
 fn verify_v4_transaction_network_upgrade(
-    transaction: &Transaction,
+    transaction: &CompressedTransaction,
     network_upgrade: NetworkUpgrade,
 ) -> Result<(), TransactionError> {
     match network_upgrade {
@@ -1101,7 +1101,7 @@ fn verify_v4_transaction_network_upgrade(
 /// - the transaction's `tx_id` and `wtx_id`, used by the shielded verification caches
 #[allow(clippy::unwrap_in_result)]
 fn verify_v5_transaction(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     nu: NetworkUpgrade,
     script_verifier: script::Verifier,
     cached_ffi_transaction: Arc<CachedFfiTransaction>,
@@ -1126,7 +1126,7 @@ fn verify_v5_transaction(
 
 /// Verifies if a V5 `transaction` is supported by `network_upgrade`.
 fn verify_v5_transaction_network_upgrade(
-    transaction: &Transaction,
+    transaction: &CompressedTransaction,
     network_upgrade: NetworkUpgrade,
 ) -> Result<(), TransactionError> {
     match network_upgrade {
@@ -1172,7 +1172,7 @@ fn verify_v5_transaction_network_upgrade(
 /// commits to the NU6.3 cross-address circuit, so it (and the Ironwood bundle) verify under the
 /// NU6.3 key, not the v5 fixed key.
 fn verify_v6_transaction(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     nu: NetworkUpgrade,
     script_verifier: script::Verifier,
     cached_ffi_transaction: Arc<CachedFfiTransaction>,
@@ -1203,7 +1203,7 @@ fn verify_v6_transaction(
 ///
 /// V6 transactions are only valid from NU6.3 onward.
 fn verify_v6_transaction_network_upgrade(
-    transaction: &Transaction,
+    transaction: &CompressedTransaction,
     network_upgrade: NetworkUpgrade,
 ) -> Result<(), TransactionError> {
     match network_upgrade {
@@ -1235,7 +1235,7 @@ fn verify_v6_transaction_network_upgrade(
 ///
 /// Returns the asynchronous script verification checks for transparent inputs in `tx`.
 fn verify_transparent_inputs_and_outputs(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     script_verifier: script::Verifier,
     cached_ffi_transaction: Arc<CachedFfiTransaction>,
 ) -> Result<AsyncChecks, TransactionError> {
@@ -1264,7 +1264,7 @@ fn verify_transparent_inputs_and_outputs(
 
 /// Verifies a transaction's Sprout shielded join split data.
 fn verify_sprout_shielded_data(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     shielded_sighash: &SigHash,
 ) -> Result<AsyncChecks, TransactionError> {
     let mut checks = AsyncChecks::new();
@@ -1299,7 +1299,7 @@ fn verify_sprout_shielded_data(
         //
         // The `if` part is indirectly enforced, since the `joinsplit_data`
         // is only parsed if those conditions apply in
-        // [`Transaction::zcash_deserialize`].
+        // [`CompressedTransaction::zcash_deserialize`].
         //
         // The valid encoding is defined in
         //
@@ -1383,7 +1383,7 @@ fn verify_sapling_bundle(
     // >   BindingSig^{Sapling}.Validate_{bvk^{Sapling}}(SigHash, bindingSigSapling ) = 1.
     //
     // Note that the `if` part is indirectly enforced, since the `sapling_shielded_data` is only
-    // parsed if those conditions apply in [`Transaction::zcash_deserialize`].
+    // parsed if those conditions apply in [`CompressedTransaction::zcash_deserialize`].
     //
     // > [NU5 onward] As specified in § 5.4.7, the validation of the 𝑅 component of the
     // > signature changes to prohibit non-canonical encodings.
@@ -1492,7 +1492,7 @@ fn queue_orchard_bundle(
 
 /// Calculates the miner fee from the transaction's value balance.
 fn miner_fee(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     spent_utxos: &HashMap<transparent::OutPoint, transparent::Utxo>,
 ) -> Result<Amount<NonNegative>, TransactionError> {
     match tx.value_balance(spent_utxos) {

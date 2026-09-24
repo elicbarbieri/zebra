@@ -10,7 +10,10 @@ use crate::{
     parameters::{NetworkUpgrade::*, GENESIS_PREVIOUS_BLOCK_HASH},
     primitives::zcash_history::BlockCommitmentTreeRoots,
     serialization::{self, BytesInDisplayOrder},
-    transaction::{arbitrary::MAX_ARBITRARY_ITEMS, TransactionExt},
+    transaction::{
+        arbitrary::{TransactionArbitrary, MAX_ARBITRARY_ITEMS},
+        TransactionExt, TransactionTestExt,
+    },
     transparent::{
         new_transaction_ordered_outputs, CoinbaseSpendRestriction,
         MIN_TRANSPARENT_COINBASE_MATURITY,
@@ -359,7 +362,7 @@ impl Arbitrary for Block {
             // Generate a random number transactions. A coinbase tx is always generated, so if
             // `transaction_count` is zero, the block will contain only the coinbase tx.
             (0..MAX_ARBITRARY_ITEMS).prop_flat_map(move |transaction_count| {
-                Transaction::vec_strategy(ledger_state.clone(), transaction_count)
+                CompressedTransaction::vec_strategy(ledger_state.clone(), transaction_count)
             })
         };
 
@@ -582,13 +585,13 @@ impl Block {
 ///
 /// If the transaction can't be fixed, returns `None`.
 pub fn fix_generated_transaction<F, E>(
-    mut transaction: Transaction,
+    mut transaction: CompressedTransaction,
     tx_index_in_block: usize,
     height: Height,
     chain_value_pools: &mut ValueBalance<NonNegative>,
     utxos: &mut HashMap<transparent::OutPoint, transparent::OrderedUtxo>,
     check_transparent_coinbase_spend: F,
-) -> Option<Transaction>
+) -> Option<CompressedTransaction>
 where
     F: Fn(
             transparent::OutPoint,
@@ -668,7 +671,7 @@ where
 ///
 /// If there is no valid output, or many search attempts have failed, returns `None`.
 pub fn find_valid_utxo_for_spend<F, E>(
-    transaction: &mut Transaction,
+    transaction: &mut CompressedTransaction,
     spend_restriction: &mut CoinbaseSpendRestriction,
     spend_height: Height,
     utxos: &HashMap<transparent::OutPoint, transparent::OrderedUtxo>,

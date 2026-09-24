@@ -16,7 +16,7 @@ use crate::{
     serialization::{
         sha256d, SerializationError, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize,
     },
-    transaction::{LockTime, Transaction, TransactionExt},
+    transaction::{CompressedTransaction, LockTime, TransactionExt, TransactionTestExt},
     transparent,
 };
 
@@ -80,7 +80,7 @@ fn chain_value_pool_change_propagates_transaction_value_balance_errors() {
     let max_money: Amount<NonNegative> = MAX_MONEY.try_into().expect("MAX_MONEY is a valid amount");
     // Two `MAX_MONEY` transparent outputs make the transaction-level output
     // sum exceed `MAX_MONEY`, so `value_balance` returns `Err`.
-    let coinbase = Transaction::test_v1(
+    let coinbase = CompressedTransaction::test_v1(
         vec![transparent::Input::Coinbase {
             height: Height(1),
             // 1 byte of data keeps the scriptSig at the 2-byte consensus minimum.

@@ -12,8 +12,12 @@ use crate::{
 };
 use zebra_chain::{
     amount::{Amount, NonNegative},
+    block::LedgerState,
     parameters::NetworkKind,
-    transaction::{Transaction, TransactionExt, UnminedTx, VerifiedUnminedTx},
+    transaction::{
+        arbitrary::TransactionArbitrary, CompressedTransaction, TransactionExt, TransactionTestExt,
+        UnminedTx, VerifiedUnminedTx,
+    },
     transparent::{self, Address},
 };
 
@@ -103,7 +107,7 @@ where
 
 /// Return a [`VerifiedUnminedTx`] strategy with outputs and inputs adjusted to pass standardness.
 pub fn standard_verified_unmined_tx_strategy() -> BoxedStrategy<VerifiedUnminedTx> {
-    any::<Transaction>()
+    CompressedTransaction::strategy(LedgerState::default())
         .prop_map(|mut transaction| {
             standardize_transaction(&mut transaction);
 
@@ -117,7 +121,7 @@ pub fn standard_verified_unmined_tx_strategy() -> BoxedStrategy<VerifiedUnminedT
 }
 
 /// Mutate a transaction so its transparent inputs/outputs pass standardness checks.
-pub fn standardize_transaction(transaction: &mut Transaction) {
+pub fn standardize_transaction(transaction: &mut CompressedTransaction) {
     let lock_script = standard_lock_script();
     let output_value = Amount::<NonNegative>::try_from(10_000).expect("valid amount");
 

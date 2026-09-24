@@ -25,7 +25,9 @@ use zebra_chain::{
     },
     primitives::ed25519,
     serialization::ZcashSerialize,
-    transaction::{self, SerializedTransaction, Transaction, TransactionExt, VerifiedUnminedTx},
+    transaction::{
+        self, CompressedTransaction, SerializedTransaction, TransactionExt, VerifiedUnminedTx,
+    },
     transparent::Script,
 };
 use zebra_consensus::{error::TransactionError, funding_stream_address};
@@ -828,7 +830,7 @@ impl TransactionObject {
     #[allow(clippy::unwrap_in_result)]
     #[allow(clippy::too_many_arguments)]
     pub fn from_transaction(
-        tx: Arc<Transaction>,
+        tx: Arc<CompressedTransaction>,
         height: Option<block::Height>,
         confirmations: Option<i64>,
         network: &Network,

@@ -16,7 +16,10 @@ use zebra_chain::{
     },
     parameters::{subsidy::block_subsidy, NetworkUpgrade},
     serialization::{ZcashDeserialize, ZcashDeserializeInto},
-    transaction::{arbitrary::transaction_to_fake_v5, LockTime, Transaction, TransactionExt},
+    transaction::{
+        arbitrary::transaction_to_fake_v5, CompressedTransaction, LockTime, TransactionExt,
+        TransactionTestExt,
+    },
     work::difficulty::{ParameterDifficulty as _, INVALID_COMPACT_DIFFICULTY},
 };
 use zebra_script::Sigops;
@@ -461,7 +464,7 @@ fn funding_stream_validation_failure() -> Result<(), Report> {
         .map(|transaction| {
             let mut output = transaction.outputs()[0].clone();
             output.value = Amount::try_from(i32::MAX).unwrap();
-            Transaction::test_v4(
+            CompressedTransaction::test_v4(
                 transaction.inputs().to_vec(),
                 vec![output],
                 transaction.lock_time().unwrap_or_else(LockTime::unlocked),
@@ -471,7 +474,8 @@ fn funding_stream_validation_failure() -> Result<(), Report> {
         .unwrap();
 
     // Build new block
-    let transactions: Vec<Arc<zebra_chain::transaction::Transaction>> = vec![Arc::new(tx)];
+    let transactions: Vec<Arc<zebra_chain::transaction::CompressedTransaction>> =
+        vec![Arc::new(tx)];
     let block = Block {
         header: block.header.clone(),
         transactions,
@@ -660,7 +664,7 @@ fn merkle_root_fake_v5_for_network(network: Network) -> Result<(), Report> {
         }
 
         // convert all transactions from the block to V5
-        let transactions: Vec<Arc<Transaction>> = block
+        let transactions: Vec<Arc<CompressedTransaction>> = block
             .transactions
             .iter()
             .map(AsRef::as_ref)

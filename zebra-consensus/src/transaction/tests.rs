@@ -30,7 +30,8 @@ use zebra_chain::{
             v5_transactions, with_garbage_orchard_authorization, with_orchard_flags,
             with_orchard_value_balance,
         },
-        zip317, Hash, HashType, LockTime, Transaction, TransactionExt,
+        zip317, CompressedTransaction, Hash, HashType, LockTime, TransactionExt,
+        TransactionTestExt,
     },
     transparent::{self, CoinbaseSpendRestriction},
 };
@@ -101,7 +102,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         // Test with empty flags (no spends, no outputs)
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x00; // Flags::empty()
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert_eq!(
             check::has_inputs_and_outputs(&modified_tx),
@@ -111,7 +112,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         // ENABLE_SPENDS only -> passes inputs check but fails outputs
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x01; // Flags::ENABLE_SPENDS
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert_eq!(
             check::has_inputs_and_outputs(&modified_tx),
@@ -121,7 +122,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         // ENABLE_OUTPUTS only -> passes outputs check but fails inputs
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x02; // Flags::ENABLE_OUTPUTS
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert_eq!(
             check::has_inputs_and_outputs(&modified_tx),
@@ -131,7 +132,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         // Both flags -> valid
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x03; // ENABLE_SPENDS | ENABLE_OUTPUTS
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert!(check::has_inputs_and_outputs(&modified_tx).is_ok());
     }
@@ -159,7 +160,7 @@ fn v5_transaction_with_orchard_actions_has_flags() {
         // Empty flags -> fails
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x00;
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert_eq!(
             check::has_enough_orchard_flags(&modified_tx),
@@ -169,21 +170,21 @@ fn v5_transaction_with_orchard_actions_has_flags() {
         // ENABLE_SPENDS only -> passes
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x01;
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert!(check::has_enough_orchard_flags(&modified_tx).is_ok());
 
         // ENABLE_OUTPUTS only -> passes
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x02;
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert!(check::has_enough_orchard_flags(&modified_tx).is_ok());
 
         // Both flags -> passes
         let mut modified = tx_bytes.clone();
         modified[flags_offset] = 0x03;
-        let modified_tx = Transaction::zcash_deserialize(modified.as_slice())
+        let modified_tx = CompressedTransaction::zcash_deserialize(modified.as_slice())
             .expect("modified transaction should deserialize");
         assert!(check::has_enough_orchard_flags(&modified_tx).is_ok());
     }
@@ -258,7 +259,7 @@ fn orchard_value_balance_frozen_at_nu6_3() {
     .is_ok());
 
     // A transaction with no Orchard bundle is unaffected at NU6.3.
-    let no_orchard_tx = Transaction::test_v5(
+    let no_orchard_tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         Vec::new(),
         Vec::new(),
@@ -301,7 +302,7 @@ fn v6_transaction_with_ironwood_actions_must_have_flags() {
         .expect("v6 transaction serializes");
     bytes[v6_ironwood_flags_offset(1)] = 0;
 
-    let tx: Transaction = bytes
+    let tx: CompressedTransaction = bytes
         .zcash_deserialize_into()
         .expect("a bundle with no flags parses; the rule is enforced by the verifier");
     assert_eq!(
@@ -454,7 +455,7 @@ fn v5_transaction_with_no_inputs_fails_verification() {
     );
 
     for net in Network::iter() {
-        let transaction = Transaction::test_v5(
+        let transaction = CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![],
             vec![output.clone()],
@@ -479,7 +480,7 @@ fn v5_transaction_with_no_outputs_fails_verification() {
     );
 
     for net in Network::iter() {
-        let transaction = Transaction::test_v5(
+        let transaction = CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![input.clone()],
             vec![],
@@ -547,7 +548,8 @@ async fn mempool_request_with_present_input_is_accepted() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(vec![input], vec![output], LockTime::unlocked(), height);
+    let tx =
+        CompressedTransaction::test_v4(vec![input], vec![output], LockTime::unlocked(), height);
 
     let input_outpoint = match tx.inputs()[0] {
         transparent::Input::PrevOut { outpoint, .. } => outpoint,
@@ -607,7 +609,7 @@ async fn mempool_request_with_invalid_lock_time_is_rejected() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::max_lock_time_timestamp(),
@@ -684,7 +686,8 @@ async fn mempool_request_with_unlocked_lock_time_is_accepted() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(vec![input], vec![output], LockTime::unlocked(), height);
+    let tx =
+        CompressedTransaction::test_v4(vec![input], vec![output], LockTime::unlocked(), height);
 
     let input_outpoint = match tx.inputs()[0] {
         transparent::Input::PrevOut { outpoint, .. } => outpoint,
@@ -747,7 +750,7 @@ async fn mempool_request_with_lock_time_max_sequence_number_is_accepted() {
     input.set_sequence(u32::MAX);
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::max_lock_time_timestamp(),
@@ -812,7 +815,7 @@ async fn mempool_request_with_past_lock_time_is_accepted() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::min_lock_time_timestamp(),
@@ -891,7 +894,7 @@ async fn mempool_request_with_unmined_output_spends_is_accepted() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::min_lock_time_timestamp(),
@@ -1012,7 +1015,7 @@ async fn block_verification_does_not_use_mempool_verified_state() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu6,
         vec![input],
         vec![output],
@@ -1171,7 +1174,7 @@ async fn mempool_request_with_immature_spend_is_rejected() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::min_lock_time_timestamp(),
@@ -1281,7 +1284,7 @@ async fn mempool_request_with_transparent_coinbase_spend_is_accepted_on_regtest(
     );
 
     // Create a non-coinbase V5 tx with the last valid expiry height.
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu6,
         vec![input],
         vec![output],
@@ -1372,7 +1375,8 @@ async fn state_error_converted_correctly() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let tx = Transaction::test_v4(vec![input], vec![output], LockTime::unlocked(), height);
+    let tx =
+        CompressedTransaction::test_v4(vec![input], vec![output], LockTime::unlocked(), height);
 
     let input_outpoint = match tx.inputs()[0] {
         transparent::Input::PrevOut { outpoint, .. } => outpoint,
@@ -1554,7 +1558,7 @@ async fn v4_transaction_with_transparent_transfer_is_accepted() {
     );
 
     // Create a V4 transaction
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::Height(block::Height(0)),
@@ -1603,7 +1607,7 @@ async fn v4_transaction_with_last_valid_expiry_height() {
     );
 
     // Create a non-coinbase V4 tx with the last valid expiry height.
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::unlocked(),
@@ -1647,7 +1651,7 @@ async fn v4_coinbase_transaction_with_low_expiry_height() {
     let expiry_height = (block_height - 1).expect("original block height is too small");
 
     // Create a coinbase V4 tx.
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::unlocked(),
@@ -1693,7 +1697,7 @@ async fn v4_transaction_with_too_low_expiry_height() {
     let expiry_height = (block_height - 1).expect("original block height is too small");
 
     // Create a non-coinbase V4 tx.
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::unlocked(),
@@ -1742,7 +1746,7 @@ async fn v4_transaction_with_exceeding_expiry_height() {
     let expiry_height = block::Height(500_000_000);
 
     // Create a non-coinbase V4 tx.
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::unlocked(),
@@ -1794,7 +1798,7 @@ async fn v4_coinbase_transaction_with_exceeding_expiry_height() {
     let expiry_height = block::Height(500_000_000);
 
     // Create a coinbase V4 tx.
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::unlocked(),
@@ -1866,20 +1870,20 @@ async fn transaction_with_out_of_range_expiry_height() {
             );
 
             let transaction = match version {
-                4 => Transaction::test_v4(
+                4 => CompressedTransaction::test_v4(
                     vec![input],
                     vec![output],
                     LockTime::unlocked(),
                     expiry_height,
                 ),
-                5 => Transaction::test_v5(
+                5 => CompressedTransaction::test_v5(
                     network_upgrade,
                     vec![input],
                     vec![output],
                     LockTime::unlocked(),
                     expiry_height,
                 ),
-                6 => Transaction::test_v6(
+                6 => CompressedTransaction::test_v6(
                     network_upgrade,
                     vec![input],
                     vec![output],
@@ -1953,7 +1957,7 @@ async fn coinbase_with_out_of_range_expiry_height() {
             nu5_activation,
         ] {
             let (input, output) = mock_coinbase_transparent_output(block_height);
-            let transaction = Transaction::test_v4(
+            let transaction = CompressedTransaction::test_v4(
                 vec![input],
                 vec![output],
                 LockTime::unlocked(),
@@ -2010,7 +2014,7 @@ async fn v4_coinbase_transaction_is_accepted() {
     let (input, output) = mock_coinbase_transparent_output(transaction_block_height);
 
     // Create a V4 coinbase transaction
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::Height(block::Height(0)),
@@ -2066,7 +2070,7 @@ async fn v4_transaction_with_transparent_transfer_is_rejected_by_the_script() {
     );
 
     // Create a V4 transaction
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::Height(block::Height(0)),
@@ -2120,7 +2124,7 @@ async fn v4_transaction_with_conflicting_transparent_spend_is_rejected() {
     );
 
     // Create a V4 transaction
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input.clone(), input.clone()],
         vec![output],
         LockTime::Height(block::Height(0)),
@@ -2291,7 +2295,7 @@ async fn v5_transaction_with_transparent_transfer_is_accepted() {
     );
 
     // Create a V5 transaction
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         network_upgrade,
         vec![input],
         vec![output],
@@ -2342,7 +2346,7 @@ async fn v5_transaction_with_last_valid_expiry_height() {
     );
 
     // Create a non-coinbase V5 tx with the last valid expiry height.
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![output],
@@ -2385,7 +2389,7 @@ async fn v5_coinbase_transaction_expiry_height() {
     // Create a coinbase V5 tx with an expiry height that matches the height of
     // the block. Note that this is the only valid expiry height for a V5
     // coinbase tx.
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![output],
@@ -2523,7 +2527,7 @@ async fn v5_transaction_with_too_low_expiry_height() {
     let expiry_height = (block_height - 1).expect("original block height is too small");
 
     // Create a non-coinbase V5 tx.
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![output],
@@ -2570,7 +2574,7 @@ async fn v5_transaction_with_exceeding_expiry_height() {
 
     // Create a non-coinbase V5 tx. Its branch must be the one active at `height_max`, so the
     // expiry-height rule is what rejects it rather than the consensus branch ID check.
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu6_3,
         vec![input],
         vec![output],
@@ -2619,7 +2623,7 @@ async fn v5_coinbase_transaction_is_accepted() {
     let known_utxos = HashMap::new();
 
     // Create a V5 coinbase transaction
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         network_upgrade,
         vec![input],
         vec![output],
@@ -2677,7 +2681,7 @@ async fn v5_transaction_with_transparent_transfer_is_rejected_by_the_script() {
     );
 
     // Create a V5 transaction
-    let transaction = Transaction::test_v5(
+    let transaction = CompressedTransaction::test_v5(
         network_upgrade,
         vec![input],
         vec![output],
@@ -2726,7 +2730,7 @@ async fn v5_transaction_with_conflicting_transparent_spend_is_rejected() {
             Amount::try_from(1).expect("valid amount"),
         );
 
-        let transaction = Transaction::test_v5(
+        let transaction = CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![input.clone(), input.clone()],
             vec![output],
@@ -2850,8 +2854,8 @@ async fn v4_with_joinsplit_is_rejected_for_modification(
 
     modify_joinsplit_bytes_and_resign(&mut tx_bytes, &network, height, modification);
 
-    let transaction: Arc<Transaction> = Arc::new(
-        Transaction::zcash_deserialize(tx_bytes.as_slice())
+    let transaction: Arc<CompressedTransaction> = Arc::new(
+        CompressedTransaction::zcash_deserialize(tx_bytes.as_slice())
             .expect("modified transaction should deserialize"),
     );
 
@@ -3361,7 +3365,7 @@ async fn v5_with_non_canonical_orchard_cv_is_rejected_as_bad_point() {
             .position(|window| window == cv)
             .expect("action 0 cv_net on the wire");
         bytes[at..at + 32].copy_from_slice(&[0xff; 32]);
-        let tx: Transaction = bytes
+        let tx: CompressedTransaction = bytes
             .zcash_deserialize_into()
             .expect("parse does no point decompression");
 
@@ -3397,7 +3401,7 @@ async fn bad_point_is_rejected_before_any_state_lookup() {
         "Sapling bundle: output 0: `cv` is not a canonical encoding of a non-small-order Jubjub point";
 
     // 0xff.. is no canonical Jubjub encoding; the result parses (no curve arithmetic at parse)
-    let corrupt_first_sapling_output_cv = |tx: &Transaction| -> Transaction {
+    let corrupt_first_sapling_output_cv = |tx: &CompressedTransaction| -> CompressedTransaction {
         let cv = tx
             .sapling_outputs()
             .next()
@@ -3650,7 +3654,7 @@ async fn orchard_disabling_soft_fork_accepts_non_orchard_transactions() {
         Amount::try_from(10001).expect("valid amount"),
     );
 
-    let transaction = Transaction::test_v4(
+    let transaction = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::Height(block::Height(0)),
@@ -3822,7 +3826,7 @@ async fn v5_consensus_branch_ids() {
     // NU5 is the first network upgrade that supports V5 txs.
     let mut network_upgrade = NetworkUpgrade::Nu5;
 
-    let mut tx = Transaction::test_v5(
+    let mut tx = CompressedTransaction::test_v5(
         network_upgrade,
         vec![input],
         vec![output],
@@ -4098,8 +4102,8 @@ fn mock_coinbase_transparent_output(
 fn build_v4_tx_with_joinsplit_data(
     joinsplit_data: Option<sprout::JoinSplitData>,
     expiry_height: block::Height,
-) -> Transaction {
-    let mut tx = Transaction::test_v4_with_sprout(joinsplit_data);
+) -> CompressedTransaction {
+    let mut tx = CompressedTransaction::test_v4_with_sprout(joinsplit_data);
     tx.set_expiry_height(expiry_height);
     tx
 }
@@ -4113,7 +4117,7 @@ fn build_signed_v4_tx_with_joinsplit_data(
     signing_key: &ed25519::SigningKey,
     network_upgrade: NetworkUpgrade,
     expiry_height: block::Height,
-) -> Transaction {
+) -> CompressedTransaction {
     // Build the initial transaction with a dummy (zero) signature
     let tx = build_v4_tx_with_joinsplit_data(Some(joinsplit_data), expiry_height);
 
@@ -4133,7 +4137,7 @@ fn build_signed_v4_tx_with_joinsplit_data(
     let sig_offset = tx_bytes.len() - 64;
     tx_bytes[sig_offset..].copy_from_slice(&sig_bytes);
 
-    Transaction::zcash_deserialize(tx_bytes.as_slice())
+    CompressedTransaction::zcash_deserialize(tx_bytes.as_slice())
         .expect("signed V4 transaction should deserialize")
 }
 
@@ -4244,7 +4248,7 @@ fn modify_joinsplit_bytes_and_resign(
         .copy_from_slice(&<[u8; 32]>::from(verification_key));
 
     // Re-sign the modified transaction so the JoinSplit signature is valid over the invalid proof.
-    let modified = Transaction::zcash_deserialize(tx_bytes.as_slice())
+    let modified = CompressedTransaction::zcash_deserialize(tx_bytes.as_slice())
         .expect("modified transaction should deserialize");
     let nu = NetworkUpgrade::current(network, height);
     let sighash = modified
@@ -4360,7 +4364,7 @@ fn parse_compact_size(bytes: &[u8], pos: &mut usize) -> u64 {
 /// # Panics
 ///
 /// Will panic if the transaction does not have Sapling spends.
-fn duplicate_sapling_spend(transaction: &mut Transaction) -> sapling::Nullifier {
+fn duplicate_sapling_spend(transaction: &mut CompressedTransaction) -> sapling::Nullifier {
     let tx_bytes = transaction
         .zcash_serialize_to_vec()
         .expect("transaction serialization should succeed");
@@ -4461,7 +4465,7 @@ fn duplicate_sapling_spend(transaction: &mut Transaction) -> sapling::Nullifier 
         // Remainder (output proofs, binding sig, orchard)
         new_bytes.extend_from_slice(&remainder);
 
-        *transaction = Transaction::zcash_deserialize(new_bytes.as_slice())
+        *transaction = CompressedTransaction::zcash_deserialize(new_bytes.as_slice())
             .expect("modified V5 transaction with duplicated sapling spend should deserialize");
 
         duplicate_nullifier
@@ -4527,7 +4531,7 @@ fn duplicate_sapling_spend(transaction: &mut Transaction) -> sapling::Nullifier 
         // Everything after spends
         new_bytes.extend_from_slice(&tx_bytes[spends_end..]);
 
-        *transaction = Transaction::zcash_deserialize(new_bytes.as_slice())
+        *transaction = CompressedTransaction::zcash_deserialize(new_bytes.as_slice())
             .expect("modified V4 transaction with duplicated sapling spend should deserialize");
 
         duplicate_nullifier
@@ -4571,7 +4575,7 @@ fn skip_v4_header_and_transparent(tx_bytes: &[u8]) -> usize {
 ///
 /// Serializes the transaction, overwrites the rk bytes in place, and re-deserializes;
 /// panics if the mutated transaction fails to parse.
-fn set_first_sapling_spend_rk(transaction: &mut Transaction, rk_bytes: [u8; 32]) {
+fn set_first_sapling_spend_rk(transaction: &mut CompressedTransaction, rk_bytes: [u8; 32]) {
     let mut tx_bytes = transaction
         .zcash_serialize_to_vec()
         .expect("transaction serialization should succeed");
@@ -4593,7 +4597,7 @@ fn set_first_sapling_spend_rk(transaction: &mut Transaction, rk_bytes: [u8; 32])
 
     tx_bytes[rk_pos..rk_pos + 32].copy_from_slice(&rk_bytes);
 
-    *transaction = Transaction::zcash_deserialize(tx_bytes.as_slice())
+    *transaction = CompressedTransaction::zcash_deserialize(tx_bytes.as_slice())
         .expect("modified transaction with small-order rk should deserialize");
 
     // Drift guard: prove the mutation landed on the rk field. If a serialization change
@@ -4611,7 +4615,7 @@ fn set_first_sapling_spend_rk(transaction: &mut Transaction, rk_bytes: [u8; 32])
 ///
 /// Serializes the transaction, overwrites the epk bytes in place, and re-deserializes;
 /// panics if the mutated transaction fails to parse.
-fn set_first_sapling_output_epk(transaction: &mut Transaction, epk_bytes: [u8; 32]) {
+fn set_first_sapling_output_epk(transaction: &mut CompressedTransaction, epk_bytes: [u8; 32]) {
     let mut tx_bytes = transaction
         .zcash_serialize_to_vec()
         .expect("transaction serialization should succeed");
@@ -4640,7 +4644,7 @@ fn set_first_sapling_output_epk(transaction: &mut Transaction, epk_bytes: [u8; 3
 
     tx_bytes[epk_pos..epk_pos + 32].copy_from_slice(&epk_bytes);
 
-    *transaction = Transaction::zcash_deserialize(tx_bytes.as_slice())
+    *transaction = CompressedTransaction::zcash_deserialize(tx_bytes.as_slice())
         .expect("modified transaction with small-order epk should deserialize");
 
     // Drift guard: prove the mutation landed on the epk field. If a serialization change
@@ -4660,10 +4664,10 @@ fn set_first_sapling_output_epk(transaction: &mut Transaction, epk_bytes: [u8; 3
 /// extracts the orchard section, replaces the target's orchard section with it,
 /// and optionally overrides the flags byte.
 fn graft_orchard_data_onto_v5_tx(
-    target: &Transaction,
+    target: &CompressedTransaction,
     net: &Network,
     override_flags: Option<u8>,
-) -> Transaction {
+) -> CompressedTransaction {
     // Find a V5 tx with orchard data to use as donor
     let donor = v5_transactions(net.block_iter())
         .find(|tx| tx.has_orchard_shielded_data())
@@ -4690,7 +4694,7 @@ fn graft_orchard_data_onto_v5_tx(
         new_bytes[flags_offset] = flags;
     }
 
-    Transaction::zcash_deserialize(new_bytes.as_slice())
+    CompressedTransaction::zcash_deserialize(new_bytes.as_slice())
         .expect("grafted V5 transaction should deserialize")
 }
 
@@ -4954,9 +4958,9 @@ fn coinbase_outputs_are_decryptable() -> Result<(), Report> {
 /// Replaces `tx`'s Orchard bundle with a single-action bundle built from a note-encryption
 /// test vector, keeping the bundle version consistent with the transaction's consensus branch.
 fn with_note_encryption_vector(
-    tx: Transaction,
+    tx: CompressedTransaction,
     v: &zebra_test::vectors::TestVector,
-) -> Transaction {
+) -> CompressedTransaction {
     use zcash_protocol::value::ZatBalance;
     use zebra_chain::transaction::arbitrary::{
         fake_orchard_bundle_with_note, outputs_enabled_flags,
@@ -5057,7 +5061,7 @@ async fn mempool_zip317_error() {
     );
 
     // Create a non-coinbase V5 tx.
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![output],
@@ -5119,7 +5123,7 @@ async fn mempool_zip317_ok() {
     );
 
     // Create a non-coinbase V5 tx.
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu5,
         vec![input],
         vec![output],
@@ -5197,7 +5201,7 @@ async fn block_with_garbage_orchard_proofs_is_rejected() {
         Amount::try_from(10001).expect("invalid value"),
     );
 
-    let tx = Transaction::test_v5(
+    let tx = CompressedTransaction::test_v5(
         NetworkUpgrade::Nu6,
         vec![input],
         vec![output],
@@ -5284,7 +5288,7 @@ async fn mempool_cached_result_bypasses_expiry_check_for_block_at_next_height() 
     // Valid in block H+1 (block_height == expiry_height) but expired in H+2
     // (block_height > expiry_height).  LockTime::unlocked() avoids a
     // BestChainNextMedianTimePast state query, keeping the test simpler.
-    let tx = Transaction::test_v4(
+    let tx = CompressedTransaction::test_v4(
         vec![input],
         vec![output],
         LockTime::unlocked(),
@@ -5359,7 +5363,7 @@ fn mempool_standard_input_scripts_limits_p2sh_redeem_sigops() {
     };
 
     let tx_spending = |unlock_bytes: &[u8]| {
-        Transaction::test_v5(
+        CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![transparent::Input::PrevOut {
                 outpoint: transparent::OutPoint {
@@ -5401,7 +5405,7 @@ fn mempool_standard_input_scripts_rejects_nonstandard_spent_output() {
     let _init_guard = zebra_test::init();
 
     let tx_spending = |unlock_bytes: &[u8], spent_output: &transparent::Output| {
-        Transaction::test_v5(
+        CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![transparent::Input::PrevOut {
                 outpoint: transparent::OutPoint {
@@ -5466,7 +5470,7 @@ fn mempool_standard_input_scripts_rejects_nonstandard_script_sigs() {
     };
 
     let tx_spending = |unlock_bytes: &[u8]| {
-        Transaction::test_v5(
+        CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             vec![transparent::Input::PrevOut {
                 outpoint: transparent::OutPoint {
@@ -5649,7 +5653,7 @@ type CacheTestState = MockService<
 ///   * no time-based lock time, so the mempool verification makes no median-time-past query; and
 ///   * a fee at or above the ZIP 317 conventional fee, so the mempool verification is not
 ///     rejected as under-paying before it reaches the verifier.
-fn cacheable_mainnet_orchard_transaction() -> Transaction {
+fn cacheable_mainnet_orchard_transaction() -> CompressedTransaction {
     zebra_test::vectors::MAINNET_BLOCKS
         .values()
         .flat_map(|bytes| {
@@ -5680,7 +5684,7 @@ fn cacheable_mainnet_orchard_transaction() -> Transaction {
 /// come from one sighasher over an empty set of previous outputs, which is correct only because
 /// [`cacheable_mainnet_orchard_transaction`] has no transparent inputs.
 fn orchard_item(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     network_upgrade: NetworkUpgrade,
 ) -> crate::primitives::halo2::Item {
     let sighasher = tx
@@ -5731,7 +5735,7 @@ tokio::task_local! {
 }
 
 /// Returns a block request that mines `tx` at `height`.
-fn cache_test_block_request(tx: &Transaction, height: Height) -> BlockRequest {
+fn cache_test_block_request(tx: &CompressedTransaction, height: Height) -> BlockRequest {
     BlockRequest {
         transaction_hash: tx.hash(),
         transaction: Arc::new(tx.clone()),
@@ -5892,7 +5896,7 @@ fn the_halo2_cache_is_reused_only_for_the_transaction_that_earned_it() {
 /// [`cacheable_mainnet_orchard_transaction`]'s: a Sapling bundle and no Orchard bundle, no
 /// transparent inputs, no time-based lock time, and a fee at or above the ZIP 317 conventional
 /// fee.
-fn cacheable_mainnet_sapling_transaction() -> (NetworkUpgrade, Transaction) {
+fn cacheable_mainnet_sapling_transaction() -> (NetworkUpgrade, CompressedTransaction) {
     zebra_test::vectors::MAINNET_BLOCKS
         .iter()
         .flat_map(|(height, bytes)| {
@@ -5925,7 +5929,7 @@ fn cacheable_mainnet_sapling_transaction() -> (NetworkUpgrade, Transaction) {
 /// Returns the Sapling verification item the transaction verifier builds for `tx` at
 /// `network_upgrade`.
 fn sapling_item(
-    tx: &Transaction,
+    tx: &CompressedTransaction,
     network_upgrade: NetworkUpgrade,
 ) -> crate::primitives::sapling::Item {
     let sighasher = tx
@@ -6069,14 +6073,14 @@ async fn tx_with_pre_activation_branch_id_is_rejected() {
         );
 
         let tx = match version {
-            5 => Transaction::test_v5(
+            5 => CompressedTransaction::test_v5(
                 tx_nu,
                 vec![input],
                 vec![output],
                 LockTime::unlocked(),
                 height,
             ),
-            6 => Transaction::test_v6(
+            6 => CompressedTransaction::test_v6(
                 tx_nu,
                 vec![input],
                 vec![output],
@@ -6138,7 +6142,7 @@ async fn null_prevout_hash_with_other_index_is_not_coinbase() {
     raw_tx.push(0); // empty lock script
     raw_tx.extend_from_slice(&0_u32.to_le_bytes()); // lock time
 
-    let tx: Transaction = raw_tx
+    let tx: CompressedTransaction = raw_tx
         .zcash_deserialize_into()
         .expect("null prevout hash with another index parses as a regular input");
 
@@ -6189,7 +6193,7 @@ fn non_coinbase_expiry_height_accepts_zero_and_spec_max() {
     let block_height = block::Height(1_000_000);
 
     for raw in [0, 499_999_999] {
-        let tx = Transaction::test_v5(
+        let tx = CompressedTransaction::test_v5(
             NetworkUpgrade::Nu5,
             Vec::new(),
             Vec::new(),
@@ -6205,7 +6209,7 @@ fn non_coinbase_expiry_height_accepts_zero_and_spec_max() {
 
 /// Returns a raw v1 transaction with two inputs: a null prevout carrying a valid height-1
 /// coinbase script, and a regular spend of a nonexistent UTXO.
-fn non_coinbase_tx_with_null_prevout_input() -> Transaction {
+fn non_coinbase_tx_with_null_prevout_input() -> CompressedTransaction {
     let mut raw = Vec::new();
     raw.extend_from_slice(&1_u32.to_le_bytes()); // version 1
     raw.push(2); // input count

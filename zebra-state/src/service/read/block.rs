@@ -20,7 +20,7 @@ use zebra_chain::{
     block::{self, Block, Height, SerializedBlock},
     block_info::BlockInfo,
     serialization::ZcashSerialize as _,
-    transaction::{self, Transaction},
+    transaction::{self, CompressedTransaction},
     transparent::{self, Utxo},
 };
 
@@ -137,13 +137,13 @@ where
         .or_else(|| db.block_header(hash_or_height))
 }
 
-/// Returns the [`Transaction`] with [`transaction::Hash`], if it exists in the
+/// Returns the [`CompressedTransaction`] with [`transaction::Hash`], if it exists in the
 /// non-finalized `chain` or finalized `db`.
 fn transaction<C>(
     chain: Option<C>,
     db: &ZebraDb,
     hash: transaction::Hash,
-) -> Option<(Arc<Transaction>, Height, DateTime<Utc>)>
+) -> Option<(Arc<CompressedTransaction>, Height, DateTime<Utc>)>
 where
     C: AsRef<Chain>,
 {
@@ -162,7 +162,7 @@ where
         .or_else(|| db.transaction(hash))
 }
 
-/// Returns a [`MinedTx`] for a [`Transaction`] with [`transaction::Hash`],
+/// Returns a [`MinedTx`] for a [`CompressedTransaction`] with [`transaction::Hash`],
 /// if one exists in the non-finalized `chain` or finalized `db`.
 pub fn mined_transaction<C>(
     chain: Option<C>,
@@ -185,7 +185,7 @@ where
     Some(MinedTx::new(tx, height, confirmations, time, tip_hash))
 }
 
-/// Returns a [`AnyTx`] for a [`Transaction`] with [`transaction::Hash`],
+/// Returns a [`AnyTx`] for a [`CompressedTransaction`] with [`transaction::Hash`],
 /// if one exists in any chain in `chains` or finalized `db`.
 /// The first chain in `chains` must be the best chain.
 pub fn any_transaction<'a>(
