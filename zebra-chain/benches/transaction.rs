@@ -28,7 +28,7 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use zebra_chain::{
     block::Block,
     serialization::{ZcashDeserialize, ZcashSerialize},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
 };
 
 /// Extracts the first transaction matching a given version from a block.

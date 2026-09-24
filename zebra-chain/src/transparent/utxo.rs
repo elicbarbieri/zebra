@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
     block::{self, Block, Height},
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent,
 };
 

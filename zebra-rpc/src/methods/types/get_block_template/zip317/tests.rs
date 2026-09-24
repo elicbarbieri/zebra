@@ -186,7 +186,7 @@ fn reserves_shielded_budget_for_sapling_coinbase() {
         serialization::{ZcashDeserializeInto, ZcashSerialize},
         transaction::{
             arbitrary::{fake_bundle_for_branch, fake_v6_transaction},
-            Transaction, VerifiedUnminedTx,
+            Transaction, TransactionExt, VerifiedUnminedTx,
         },
     };
     use zebra_consensus::ShieldedActionCounts;

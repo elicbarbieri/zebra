@@ -31,7 +31,8 @@ use zebra_chain::{
     parameters::{Network, NetworkUpgrade},
     serialization::DateTime32,
     transaction::{
-        self, HashType, SigHash, Transaction, TxVersion, UnminedTx, UnminedTxId, VerifiedUnminedTx,
+        self, HashType, SigHash, Transaction, TransactionExt, TxVersion, UnminedTx, UnminedTxId,
+        VerifiedUnminedTx,
     },
     transparent,
 };

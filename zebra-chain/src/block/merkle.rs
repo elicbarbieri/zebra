@@ -6,7 +6,7 @@ use hex::{FromHex, ToHex};
 
 use crate::{
     serialization::{sha256d, BytesInDisplayOrder},
-    transaction::{self, Transaction, UnminedTx, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, Transaction, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx},
 };
 
 #[cfg(any(test, feature = "proptest-impl"))]

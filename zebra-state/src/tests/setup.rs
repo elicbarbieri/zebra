@@ -11,7 +11,7 @@ use zebra_chain::{
         NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::{LockTime, Transaction},
+    transaction::{LockTime, Transaction, TransactionExt},
 };
 
 use crate::{

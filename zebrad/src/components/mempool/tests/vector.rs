@@ -17,7 +17,7 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::ZcashDeserializeInto,
-    transaction::{Transaction, VerifiedUnminedTx},
+    transaction::{Transaction, TransactionExt, VerifiedUnminedTx},
     transparent::{self, OutPoint},
 };
 use zebra_consensus::transaction as tx;

@@ -19,7 +19,8 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
-    transaction, transparent,
+    transaction::{self, TransactionExt},
+    transparent,
     value_balance::ValueBalance,
     LedgerState,
 };

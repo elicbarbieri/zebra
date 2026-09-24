@@ -12,6 +12,7 @@ use zebra_chain::{
     parameters::NetworkUpgrade::*,
     parameters::*,
     primitives::zcash_history::BlockCommitmentTreeRoots,
+    transaction::TransactionExt,
     value_balance::ValueBalance,
     LedgerState,
 };

@@ -15,6 +15,7 @@ use zebra_chain::{
     },
     parameters::Network::Mainnet,
     serialization::ZcashDeserializeInto,
+    transaction::TransactionExt,
 };
 use zebra_network::address_book_peers::MockAddressBookPeers;
 use zebra_node_services::mempool::{self, MempoolChange, MempoolTxSubscriber};

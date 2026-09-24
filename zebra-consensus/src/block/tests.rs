@@ -16,7 +16,7 @@ use zebra_chain::{
     },
     parameters::NetworkUpgrade,
     serialization::{ZcashDeserialize, ZcashDeserializeInto},
-    transaction::{arbitrary::transaction_to_fake_v5, LockTime, Transaction},
+    transaction::{arbitrary::transaction_to_fake_v5, LockTime, Transaction, TransactionExt},
     work::difficulty::{ParameterDifficulty as _, INVALID_COMPACT_DIFFICULTY},
 };
 use zebra_script::Sigops;

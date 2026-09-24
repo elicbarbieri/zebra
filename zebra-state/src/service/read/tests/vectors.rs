@@ -8,7 +8,7 @@ use zebra_chain::{
     parameters::Network::*,
     serialization::ZcashDeserializeInto,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction,
+    transaction::{self, TransactionExt},
 };
 
 use zebra_test::{

@@ -6,7 +6,10 @@
 //!
 //! [`zcash/lightwalletd`]: https://github.com/zcash/lightwalletd/tree/master/walletrpc
 
-use zebra_chain::{block, transaction, transaction::Transaction};
+use zebra_chain::{
+    block, transaction,
+    transaction::{Transaction, TransactionExt},
+};
 
 #[cfg(test)]
 mod tests;

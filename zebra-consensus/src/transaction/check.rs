@@ -21,7 +21,7 @@ use zebra_chain::{
     block::Height,
     parameters::{Network, NetworkUpgrade},
     primitives::zcash_note_encryption,
-    transaction::{LockTime, Transaction},
+    transaction::{LockTime, Transaction, TransactionExt},
     transparent,
 };
 

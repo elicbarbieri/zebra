@@ -19,6 +19,7 @@ use crate::{
     block::{self, arbitrary::MAX_PARTIAL_CHAIN_BLOCKS},
     parameters::{Network, NetworkUpgrade},
     serialization::{self, ZcashDeserializeInto},
+    transaction::TransactionExt,
     transparent,
     value_balance::{ValueBalance, ValueBalanceError},
     LedgerState,

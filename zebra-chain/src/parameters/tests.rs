@@ -178,7 +178,7 @@ fn nu7_branch_id_and_transaction_formats() {
 
     use crate::{
         serialization::{ZcashDeserializeInto, ZcashSerialize},
-        transaction::{HashType, Transaction},
+        transaction::{HashType, Transaction, TransactionExt},
     };
     use zcash_protocol::consensus::BranchId;
 

@@ -19,7 +19,7 @@ use zcash_script::{opcode::PossiblyBad, script, script::Evaluable as _, Opcode};
 use zcash_transparent::bundle as zp_transparent;
 use zebra_chain::{
     parameters::NetworkUpgrade,
-    transaction::{HashType, SigHasher},
+    transaction::{HashType, SigHasher, TransactionExt},
     transparent,
 };
 

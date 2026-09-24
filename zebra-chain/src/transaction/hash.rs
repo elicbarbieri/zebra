@@ -39,6 +39,7 @@ use crate::serialization::{
     BytesInDisplayOrder, ReadZcashExt, SerializationError, WriteZcashExt, ZcashDeserialize,
     ZcashSerialize,
 };
+use crate::transaction::TransactionExt;
 
 use super::{AuthDigest, Transaction};
 

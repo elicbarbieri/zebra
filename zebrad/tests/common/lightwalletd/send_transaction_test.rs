@@ -25,7 +25,7 @@ use zebra_chain::{
     block::Block,
     parameters::Network::*,
     serialization::ZcashSerialize,
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
 };
 use zebra_node_services::rpc_client::RpcRequestClient;
 use zebra_rpc::queue::CHANNEL_AND_QUEUE_CAPACITY;

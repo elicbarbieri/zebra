@@ -26,7 +26,7 @@ use zebra_chain::{
     parameters::{Network, GENESIS_PREVIOUS_BLOCK_HASH},
     sapling,
     serialization::{CompactSizeMessage, TrustedPreallocate, ZcashSerialize as _},
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
 };

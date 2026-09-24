@@ -22,7 +22,7 @@ use zebra_chain::{
     history_tree::HistoryTree,
     parameters::{ConsensusBranchId, Network, NetworkUpgrade},
     serialization::{DateTime32, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
-    transaction::{self, Transaction, UnminedTx, VerifiedUnminedTx},
+    transaction::{self, Transaction, TransactionExt, UnminedTx, VerifiedUnminedTx},
     transparent,
     value_balance::ValueBalance,
 };

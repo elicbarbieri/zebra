@@ -8,7 +8,7 @@ use crate::{
     },
     block::{Block, Height},
     parameters::{Network, NetworkUpgrade},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
     transparent::{Address, Output},
 };
 

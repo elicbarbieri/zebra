@@ -21,7 +21,7 @@ use zebra_chain::{
         Network, NetworkUpgrade,
     },
     serialization::{ZcashDeserialize, ZcashSerialize},
-    transaction::{Hash, HashType, LockTime, Transaction},
+    transaction::{Hash, HashType, LockTime, Transaction, TransactionExt},
     transparent,
 };
 

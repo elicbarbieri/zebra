@@ -11,7 +11,7 @@ use crate::{
     sapling,
     serialization::TrustedPreallocate,
     sprout,
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
     transparent,
     value_balance::{ValueBalance, ValueBalanceError},
 };

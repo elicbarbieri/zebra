@@ -5,7 +5,7 @@ use std::time::Duration;
 use futures::StreamExt as _;
 use tower::{service_fn, util::BoxCloneService};
 
-use zebra_chain::parameters::Network;
+use zebra_chain::{parameters::Network, transaction::TransactionExt};
 use zebra_test::mock_service::{MockService, PanicAssertion};
 
 use super::*;

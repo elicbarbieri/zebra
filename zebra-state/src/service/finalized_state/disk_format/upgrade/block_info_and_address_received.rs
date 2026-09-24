@@ -10,6 +10,7 @@ use zebra_chain::{
     amount::NonNegative,
     block::{Block, Height},
     block_info::BlockInfo,
+    transaction::TransactionExt,
     transparent::{self, OutPoint, Utxo},
     value_balance::ValueBalance,
 };
