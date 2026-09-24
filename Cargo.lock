@@ -432,16 +432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bitflags-serde-legacy"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b64e60c28b6d25ad92e8b367801ff9aa12b41d05fc8798055d296bace4a60cc"
-dependencies = [
- "bitflags",
- "serde",
-]
-
-[[package]]
 name = "bitvec"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7238,17 +7228,14 @@ version = "13.0.1"
 dependencies = [
  "bech32",
  "bitflags",
- "bitflags-serde-legacy",
  "bitvec",
  "blake2b_simd",
- "blake2s_simd",
  "bounded-vec",
  "bs58",
  "byteorder",
  "chrono",
  "color-eyre",
  "criterion",
- "derive-getters",
  "dirs",
  "ed25519-zebra",
  "equihash",
@@ -7258,7 +7245,6 @@ dependencies = [
  "hex",
  "humantime",
  "incrementalmerkletree",
- "itertools 0.14.0",
  "jubjub",
  "lazy_static",
  "nonempty",
@@ -7269,7 +7255,6 @@ dependencies = [
  "proptest-derive",
  "rand 0.8.6",
  "rand_chacha 0.3.1",
- "rand_core 0.6.4",
  "rayon",
  "reddsa",
  "redjubjub",
@@ -7284,7 +7269,6 @@ dependencies = [
  "sha2 0.10.9",
  "sinsemilla",
  "spandoc",
- "static_assertions",
  "strum",
  "tempfile",
  "thiserror 2.0.18",
@@ -7293,7 +7277,6 @@ dependencies = [
  "uint 0.10.0",
  "x25519-dalek",
  "zcash_address",
- "zcash_encoding",
  "zcash_history",
  "zcash_note_encryption",
  "zcash_primitives",

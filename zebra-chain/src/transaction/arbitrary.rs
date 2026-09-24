@@ -13,15 +13,12 @@ use std::{cmp::max, collections::HashMap, ops::Neg, sync::Arc};
 
 use chrono::{TimeZone, Utc};
 use proptest::{array, collection::vec, option, prelude::*};
-use reddsa::{orchard::Binding, Signature};
 
 use crate::{
     amount::{self, Amount, NegativeAllowed, NonNegative},
     block::{self, arbitrary::MAX_PARTIAL_CHAIN_BLOCKS},
-    orchard,
     parameters::{Network, NetworkUpgrade},
-    primitives::{Halo2Proof, ZkSnarkProof},
-    sapling::{self, AnchorVariant, PerSpendAnchor, SharedAnchor},
+    primitives::ZkSnarkProof,
     serialization::{self, ZcashDeserializeInto},
     sprout, transparent,
     value_balance::{ValueBalance, ValueBalanceError},
@@ -31,9 +28,7 @@ use crate::{
 use zcash_primitives::transaction::TxVersion;
 use zcash_transparent;
 
-use super::{
-    FieldNotPresent, JoinSplitData, LockTime, Memo, Transaction, UnminedTx, VerifiedUnminedTx,
-};
+use super::{JoinSplitData, LockTime, Memo, Transaction, UnminedTx, VerifiedUnminedTx};
 
 /// Returns the librustzcash consensus branch ID for `network_upgrade`, falling back to
 /// `fallback` when the upgrade has no branch ID that librustzcash recognises.
@@ -614,212 +609,6 @@ impl<P: ZkSnarkProof + Arbitrary + 'static> Arbitrary for JoinSplitData<P> {
                     b
                 }),
             })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl<AnchorV> Arbitrary for sapling::ShieldedData<AnchorV>
-where
-    AnchorV: AnchorVariant + Clone + std::fmt::Debug + 'static,
-    sapling::TransferData<AnchorV>: Arbitrary,
-{
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (
-            any::<Amount>(),
-            any::<sapling::TransferData<AnchorV>>(),
-            vec(any::<u8>(), 64),
-        )
-            .prop_map(|(value_balance, transfers, sig_bytes)| Self {
-                value_balance,
-                transfers,
-                binding_sig: redjubjub::Signature::from({
-                    let mut b = [0u8; 64];
-                    b.copy_from_slice(sig_bytes.as_slice());
-                    b
-                }),
-            })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl Arbitrary for sapling::TransferData<PerSpendAnchor> {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        vec(any::<sapling::Output>(), 0..MAX_ARBITRARY_ITEMS)
-            .prop_flat_map(|outputs| {
-                (
-                    if outputs.is_empty() {
-                        // must have at least one spend or output
-                        vec(
-                            any::<sapling::Spend<PerSpendAnchor>>(),
-                            1..MAX_ARBITRARY_ITEMS,
-                        )
-                    } else {
-                        vec(
-                            any::<sapling::Spend<PerSpendAnchor>>(),
-                            0..MAX_ARBITRARY_ITEMS,
-                        )
-                    },
-                    Just(outputs),
-                )
-            })
-            .prop_map(|(spends, outputs)| {
-                if !spends.is_empty() {
-                    sapling::TransferData::SpendsAndMaybeOutputs {
-                        shared_anchor: FieldNotPresent,
-                        spends: spends.try_into().unwrap(),
-                        maybe_outputs: outputs,
-                    }
-                } else if !outputs.is_empty() {
-                    sapling::TransferData::JustOutputs {
-                        outputs: outputs.try_into().unwrap(),
-                    }
-                } else {
-                    unreachable!("there must be at least one generated spend or output")
-                }
-            })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl Arbitrary for sapling::TransferData<SharedAnchor> {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        vec(any::<sapling::Output>(), 0..MAX_ARBITRARY_ITEMS)
-            .prop_flat_map(|outputs| {
-                (
-                    any::<sapling::tree::Root>(),
-                    if outputs.is_empty() {
-                        // must have at least one spend or output
-                        vec(
-                            any::<sapling::Spend<SharedAnchor>>(),
-                            1..MAX_ARBITRARY_ITEMS,
-                        )
-                    } else {
-                        vec(
-                            any::<sapling::Spend<SharedAnchor>>(),
-                            0..MAX_ARBITRARY_ITEMS,
-                        )
-                    },
-                    Just(outputs),
-                )
-            })
-            .prop_map(|(shared_anchor, spends, outputs)| {
-                if !spends.is_empty() {
-                    sapling::TransferData::SpendsAndMaybeOutputs {
-                        shared_anchor,
-                        spends: spends.try_into().unwrap(),
-                        maybe_outputs: outputs,
-                    }
-                } else if !outputs.is_empty() {
-                    sapling::TransferData::JustOutputs {
-                        outputs: outputs.try_into().unwrap(),
-                    }
-                } else {
-                    unreachable!("there must be at least one generated spend or output")
-                }
-            })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl Arbitrary for orchard::ShieldedData {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (
-            any::<orchard::shielded_data::Flags>(),
-            any::<Amount>(),
-            any::<orchard::tree::Root>(),
-            vec(
-                any::<orchard::shielded_data::AuthorizedAction>(),
-                1..MAX_ARBITRARY_ITEMS,
-            ),
-            any::<BindingSignature>(),
-        )
-            .prop_flat_map(
-                |(flags, value_balance, shared_anchor, actions, binding_sig)| {
-                    // Since NU6.2, an Orchard proof must have the canonical length for its number of
-                    // actions (`2272 * num_actions + 2720` bytes), otherwise it is rejected as
-                    // non-canonical (GHSA-jfw5-j458-pfv6). The V5 txid is computed by round-tripping
-                    // through `librustzcash`, which enforces this length, so a proof of any other
-                    // size makes the round-trip (and thus `Transaction::hash`) fail. Generate a proof
-                    // of exactly the expected length, which depends on the number of actions.
-                    let proof_size = orchard::shielded_data::expected_proof_size(actions.len());
-                    (
-                        Just(flags),
-                        Just(value_balance),
-                        Just(shared_anchor),
-                        vec(any::<u8>(), proof_size).prop_map(Halo2Proof),
-                        Just(actions),
-                        Just(binding_sig),
-                    )
-                },
-            )
-            .prop_map(
-                |(flags, value_balance, shared_anchor, proof, actions, binding_sig)| Self {
-                    flags,
-                    value_balance,
-                    shared_anchor,
-                    proof,
-                    actions: actions
-                        .try_into()
-                        .expect("arbitrary vector size range produces at least one action"),
-                    binding_sig: binding_sig.0,
-                },
-            )
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-impl Arbitrary for orchard::ShieldedDataV6 {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        // The v6 Orchard-pool bundle reserves `enableCrossAddress` exactly like v5, so the base
-        // `ShieldedData` strategy (which only generates the pre-NU6.3 flag bits) is reused as-is.
-        // Only the Ironwood bundle permits that flag; see the `ironwood::ShieldedData` strategy.
-        any::<orchard::ShieldedData>()
-            .prop_map(orchard::ShieldedDataV6::new)
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct BindingSignature(pub(crate) Signature<Binding>);
-
-impl Arbitrary for BindingSignature {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (vec(any::<u8>(), 64))
-            .prop_filter_map(
-                "zero Signature::<Binding> values are invalid",
-                |sig_bytes| {
-                    let mut b = [0u8; 64];
-                    b.copy_from_slice(sig_bytes.as_slice());
-                    if b == [0u8; 64] {
-                        return None;
-                    }
-                    Some(BindingSignature(Signature::<Binding>::from(b)))
-                },
-            )
             .boxed()
     }
 

@@ -51,15 +51,11 @@ proptest-impl = [
 bench = ["zebra-test"]
 
 [dependencies]
-
-derive-getters = { workspace = true, features = ["auto_copy_getters"] }
 lazy_static = { workspace = true }
 tempfile = { workspace = true }
 bitvec = { workspace = true }
 bitflags = { workspace = true }
-bitflags-serde-legacy = { workspace = true }
 blake2b_simd = { workspace = true }
-blake2s_simd = { workspace = true }
 bs58 = { workspace = true, features = ["check"] }
 byteorder = { workspace = true }
 
@@ -71,7 +67,6 @@ jubjub = { workspace = true }
 dirs = { workspace = true }
 num-integer = { workspace = true }
 primitive-types = { workspace = true }
-rand_core = { workspace = true }
 ripemd = { workspace = true }
 # Matches version used by hdwallet
 secp256k1 = { workspace = true, features = ["serde"] }
@@ -86,7 +81,6 @@ zcash_script.workspace = true
 halo2 = { package = "halo2_proofs", version = "0.3" }
 orchard.workspace = true
 nonempty = { workspace = true, optional = true }
-zcash_encoding.workspace = true
 zcash_history.workspace = true
 zcash_note_encryption = { workspace = true }
 zcash_primitives = { workspace = true, features = ["transparent-inputs"] }
@@ -99,9 +93,6 @@ sinsemilla = { workspace = true }
 # Time
 chrono = { workspace = true, features = ["clock", "std", "serde"] }
 humantime = { workspace = true }
-
-# Error Handling & Formatting
-static_assertions = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
@@ -113,7 +104,6 @@ serde-big-array = { workspace = true }
 
 # Processing
 futures = { workspace = true }
-itertools = { workspace = true }
 rayon = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 

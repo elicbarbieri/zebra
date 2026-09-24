@@ -1092,7 +1092,7 @@ fn orchard_proof_size_is_canonical() {
             let proof_len = bundle.authorization().proof().as_ref().len();
             assert_ne!(
                 proof_len + 1,
-                crate::orchard::shielded_data::expected_proof_size(bundle.actions().len()),
+                ::orchard::Proof::expected_proof_size(bundle.actions().len()),
                 "a padded Orchard proof must not be considered canonical"
             );
 
