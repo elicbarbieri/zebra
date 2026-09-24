@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use zebra_chain::{
     amount::{Amount, NonNegative},
-    block::{self, Block, ChainHistoryMmrRootHash},
+    block::{self, Block, ChainHistoryMmrRootHash, SerializedBlock},
     block_info::BlockInfo,
     orchard, sapling,
     serialization::DateTime32,
@@ -402,6 +402,9 @@ pub enum ReadResponse {
     /// Response to [`ReadRequest::Block`] with the specified block.
     Block(Option<Arc<Block>>),
 
+    /// Response to [`ReadRequest::RawBlock`] with the specified block, serialized.
+    RawBlock(Option<SerializedBlock>),
+
     /// Response to [`ReadRequest::BlockAndSize`] with the specified block and
     /// serialized size.
     BlockAndSize(Option<(Arc<Block>, usize)>),
@@ -634,6 +637,9 @@ impl TryFrom<ReadResponse> for Response {
 
             ReadResponse::AnyChainUtxo(_) => Err("ReadService does not track pending UTXOs. \
                                                   Manually unwrap the response, and handle pending UTXOs."),
+
+            ReadResponse::RawBlock(_) => Err("There is no Response::RawBlock. \
+                                              Serialized blocks are only read by the RPC methods."),
 
             ReadResponse::BlockLocator(hashes) => Ok(Response::BlockLocator(hashes)),
             ReadResponse::BlockHashes(hashes) => Ok(Response::BlockHashes(hashes)),

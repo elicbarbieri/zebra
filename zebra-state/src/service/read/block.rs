@@ -17,7 +17,7 @@ use std::{collections::HashMap, sync::Arc};
 use chrono::{DateTime, Utc};
 
 use zebra_chain::{
-    block::{self, Block, Height},
+    block::{self, Block, Height, SerializedBlock},
     block_info::BlockInfo,
     serialization::ZcashSerialize as _,
     transaction::{self, Transaction},
@@ -87,6 +87,32 @@ where
             (contextual.block.clone(), size)
         })
         .or_else(|| db.block_and_size(hash_or_height))
+}
+
+/// Returns the serialized [`Block`] with [`block::Hash`] or
+/// [`Height`], if it exists in the non-finalized `chain` or finalized `db`.
+///
+/// - Finalized: reassembled from stored bytes, nothing deserialized
+/// - Non-finalized: serialized here (only held parsed; few blocks, already in memory)
+pub fn raw_block<C>(
+    chain: Option<C>,
+    db: &ZebraDb,
+    hash_or_height: HashOrHeight,
+) -> Option<SerializedBlock>
+where
+    C: AsRef<Chain>,
+{
+    // # Correctness
+    //
+    // Same blocks in both states → cheapest first (`chain` in memory, `db` on disk)
+    chain
+        .as_ref()
+        .and_then(|chain| chain.as_ref().block(hash_or_height))
+        .map(|contextual| SerializedBlock::from(&*contextual.block))
+        .or_else(|| {
+            db.raw_block_bytes(hash_or_height)
+                .map(SerializedBlock::from)
+        })
 }
 
 /// Returns the [`block::Header`] with [`block::Hash`] or
