@@ -690,7 +690,8 @@ fn validate_mempool(
 
         verifier
             .oneshot(transaction::MempoolRequest {
-                transaction: UnminedTx::from(Arc::new(transaction)),
+                transaction: UnminedTx::try_from(Arc::new(transaction))
+                    .expect("test transactions decompress"),
                 height,
             })
             .await

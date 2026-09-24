@@ -22,7 +22,7 @@ lazy_static::lazy_static! {
 
 fn verify_valid_script(nu: NetworkUpgrade, tx: &[u8], amount: u64, pubkey: &[u8]) -> Result<()> {
     let transaction =
-        tx.zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+        tx.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
     let output = transparent::Output {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(pubkey),
@@ -53,8 +53,8 @@ fn verify_valid_script_v4() -> Result<()> {
 fn count_legacy_sigops() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let tx = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+    let tx =
+        SCRIPT_TX.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
 
     assert_eq!(tx.sigops()?, 1);
 
@@ -65,8 +65,8 @@ fn count_legacy_sigops() -> Result<()> {
 fn fail_invalid_script() -> Result<()> {
     let _init_guard = zebra_test::init();
 
-    let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+    let transaction =
+        SCRIPT_TX.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
     let coin = u64::pow(10, 8);
     let amount = 211 * coin;
     let output = transparent::Output {
@@ -92,8 +92,8 @@ fn reuse_script_verifier_pass_pass() -> Result<()> {
     let _init_guard = zebra_test::init();
 
     let coin = u64::pow(10, 8);
-    let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+    let transaction =
+        SCRIPT_TX.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
     let amount = 212 * coin;
     let output = transparent::Output {
         value: amount.try_into()?,
@@ -125,8 +125,8 @@ fn reuse_script_verifier_pass_fail() -> Result<()> {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(&SCRIPT_PUBKEY.clone()),
     };
-    let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+    let transaction =
+        SCRIPT_TX.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
 
     let verifier = super::CachedFfiTransaction::new(
         transaction,
@@ -155,8 +155,8 @@ fn reuse_script_verifier_fail_pass() -> Result<()> {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(&SCRIPT_PUBKEY.clone()),
     };
-    let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+    let transaction =
+        SCRIPT_TX.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
 
     let verifier = super::CachedFfiTransaction::new(
         transaction,
@@ -185,8 +185,8 @@ fn reuse_script_verifier_fail_fail() -> Result<()> {
         value: amount.try_into()?,
         lock_script: transparent::Script::new(&SCRIPT_PUBKEY.clone()),
     };
-    let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()?;
+    let transaction =
+        SCRIPT_TX.zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()?;
 
     let verifier = super::CachedFfiTransaction::new(
         transaction,
@@ -223,7 +223,7 @@ fn p2sh() -> Result<()> {
         Output::zcash_deserialize(&hex::decode(serialized_output).unwrap().to_vec()[..]).unwrap();
 
     let verifier = super::CachedFfiTransaction::new(
-        Arc::new(tx),
+        Arc::new(tx.decompress().expect("test transactions decompress")),
         Arc::new(vec![previous_output]),
         NetworkUpgrade::Nu5,
     )
@@ -340,7 +340,7 @@ fn build_and_verify_v5_p2pkh(
     );
 
     let verifier = super::CachedFfiTransaction::new(
-        Arc::new(final_tx),
+        Arc::new(final_tx.decompress().expect("test transactions decompress")),
         Arc::new(vec![previous_output]),
         NetworkUpgrade::Nu5,
     )
@@ -545,7 +545,7 @@ fn build_and_verify_v5_p2pkh_single_with_missing_output(
     let final_tx = make_tx(unlock_scripts);
 
     let verifier = super::CachedFfiTransaction::new(
-        Arc::new(final_tx),
+        Arc::new(final_tx.decompress().expect("test transactions decompress")),
         all_previous_outputs,
         NetworkUpgrade::Nu5,
     )
@@ -690,7 +690,7 @@ fn build_and_verify_v4_p2pkh(sig_hash_type_byte: u8) -> std::result::Result<(), 
     );
 
     let verifier = super::CachedFfiTransaction::new(
-        Arc::new(final_tx),
+        Arc::new(final_tx.decompress().expect("test transactions decompress")),
         Arc::new(vec![previous_output]),
         NetworkUpgrade::Canopy,
     )
@@ -979,7 +979,7 @@ fn p2sh_sigop_count_counts_redeem_script() -> Result<()> {
     // The `CachedFfiTransaction::p2sh_sigops()` method must delegate to the same counter, so the
     // block-verifier path yields the same count.
     let cached = super::CachedFfiTransaction::new(
-        Arc::new(tx),
+        Arc::new(tx.decompress().expect("test transactions decompress")),
         Arc::new(vec![spent_output]),
         NetworkUpgrade::Nu5,
     )
@@ -1061,7 +1061,7 @@ fn p2sh_sigop_count_matches_zcashd_when_redeem_script_contains_disabled_opcode()
 
     // Same expectation through the block-verifier entry point.
     let cached = super::CachedFfiTransaction::new(
-        Arc::new(tx),
+        Arc::new(tx.decompress().expect("test transactions decompress")),
         Arc::new(vec![spent_output]),
         NetworkUpgrade::Nu5,
     )
@@ -1273,7 +1273,7 @@ fn is_valid_rejects_mismatched_previous_outputs_length() {
     let _init_guard = zebra_test::init();
 
     let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()
+        .zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()
         .expect("test fixture deserializes");
 
     // SCRIPT_TX has exactly one input. Pass two previous outputs so `.get(0)` succeeds
@@ -1301,7 +1301,7 @@ fn is_valid_rejects_out_of_range_input_index() {
     let _init_guard = zebra_test::init();
 
     let transaction = SCRIPT_TX
-        .zcash_deserialize_into::<Arc<zebra_chain::transaction::CompressedTransaction>>()
+        .zcash_deserialize_into::<Arc<zcash_primitives::transaction::Transaction>>()
         .expect("test fixture deserializes");
     let output = Output {
         value: (212 * u64::pow(10, 8)).try_into().expect("valid amount"),
@@ -1454,7 +1454,7 @@ fn stale_sighash_buffer_v5_two_checksig_rejected() {
     );
 
     let verifier = super::CachedFfiTransaction::new(
-        Arc::new(final_tx),
+        Arc::new(final_tx.decompress().expect("test transactions decompress")),
         Arc::new(vec![previous_output]),
         NetworkUpgrade::Nu5,
     )

@@ -164,7 +164,7 @@ async fn mempool_push_transaction() -> Result<(), crate::BoxError> {
 
     // Test `Request::PushTransaction`
     let request = inbound_service.clone().oneshot(Request::PushTransaction(
-        tx.clone().into(),
+        UnminedTx::try_from(tx.clone()).expect("test transactions decompress"),
         Some(PeerSocketAddr::from(([192, 168, 180, 9], 10_000))),
     ));
     // Simulate a successful transaction verification
@@ -304,7 +304,8 @@ async fn push_transaction_routing_enforces_per_peer_source() -> Result<(), crate
     // A non-coinbase transaction to push.
     let block: Arc<Block> =
         zebra_test::vectors::BLOCK_MAINNET_982681_BYTES.zcash_deserialize_into()?;
-    let unmined_tx: UnminedTx = block.transactions[1].clone().into();
+    let unmined_tx =
+        UnminedTx::try_from(block.transactions[1].clone()).expect("test transactions decompress");
 
     // A push tagged with a sending peer is routed through the per-peer-capped path.
     let peer = PeerSocketAddr::from(([192, 168, 180, 9], 10_000));
@@ -379,7 +380,8 @@ async fn mempool_advertise_transaction_ids() -> Result<(), crate::BoxError> {
         peer_set
             .expect_request(Request::TransactionsById(txs))
             .map(|responder| {
-                let unmined_transaction = UnminedTx::from(test_transaction.clone());
+                let unmined_transaction = UnminedTx::try_from(test_transaction.clone())
+                    .expect("test transactions decompress");
                 responder.respond(Response::Transactions(vec![Available((
                     unmined_transaction,
                     None,
@@ -482,7 +484,7 @@ async fn mempool_transaction_expiration() -> Result<(), crate::BoxError> {
 
     // Push test transaction
     let request = inbound_service.clone().oneshot(Request::PushTransaction(
-        Arc::new(tx1.clone()).into(),
+        UnminedTx::try_from(Arc::new(tx1.clone())).expect("test transactions decompress"),
         Some(PeerSocketAddr::from(([192, 168, 180, 9], 10_000))),
     ));
     // Simulate a successful transaction verification
@@ -620,7 +622,7 @@ async fn mempool_transaction_expiration() -> Result<(), crate::BoxError> {
 
     // Push a second transaction to trigger `remove_expired_transactions()`
     let request = inbound_service.clone().oneshot(Request::PushTransaction(
-        tx2.clone().into(),
+        UnminedTx::try_from(tx2.clone()).expect("test transactions decompress"),
         Some(PeerSocketAddr::from(([192, 168, 180, 9], 10_000))),
     ));
     // Simulate a successful transaction verification

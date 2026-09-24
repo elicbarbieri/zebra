@@ -297,7 +297,7 @@ fn max_msg_size_round_trip() {
     let tx: CompressedTransaction = zebra_test::vectors::DUMMY_TX1
         .zcash_deserialize_into()
         .unwrap();
-    let msg = Message::Tx(std::sync::Arc::new(tx).into());
+    let msg = Message::Tx(UnminedTx::try_from(tx).expect("test vector transaction decompresses"));
 
     use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -356,6 +356,70 @@ fn max_msg_size_round_trip() {
             .expect("a next message should be available")
             .expect("message should decode with the msg body size as max allowed value")
     });
+}
+
+/// `tx` message with a bad point = decode error (connection closed, no ban), as the eager parse
+#[test]
+fn tx_message_with_bad_point_is_a_decode_error() {
+    use tokio_util::codec::{FramedRead, FramedWrite};
+    use zebra_chain::{
+        parameters::Network,
+        transaction::{arbitrary::transactions_from_blocks, TransactionExt},
+    };
+
+    let _init_guard = zebra_test::init();
+
+    let (_, tx) = transactions_from_blocks(Network::Mainnet.block_iter())
+        .find(|(_, tx)| tx.sapling_outputs().next().is_some())
+        .expect("test vectors have a tx with a Sapling output");
+    let cv = tx
+        .sapling_outputs()
+        .next()
+        .expect("found above")
+        .cv()
+        .to_bytes();
+    let tx = UnminedTx::try_from(tx).expect("test vector transaction decompresses");
+
+    let mut bytes = zebra_test::MULTI_THREADED_RUNTIME.block_on(async {
+        let mut bytes = Vec::new();
+        FramedWrite::new(
+            &mut bytes,
+            Codec::builder()
+                .with_max_body_len(MAX_PROTOCOL_MESSAGE_LEN)
+                .finish(),
+        )
+        .send(Message::Tx(tx))
+        .await
+        .expect("valid tx message encodes");
+        bytes
+    });
+
+    // 0xff.. is no canonical Jubjub encoding; checksum recomputed so only the point is bad
+    let at = bytes
+        .windows(32)
+        .position(|window| window == cv)
+        .expect("output 0 cv in the message");
+    bytes[at..at + 32].copy_from_slice(&[0xff; 32]);
+    let checksum = sha256d::Checksum::from(&bytes[HEADER_LEN..]);
+    bytes[HEADER_LEN - 4..HEADER_LEN].copy_from_slice(&checksum.0);
+
+    let error = zebra_test::MULTI_THREADED_RUNTIME.block_on(async {
+        FramedRead::new(
+            Cursor::new(&bytes),
+            Codec::builder()
+                .with_max_body_len(MAX_PROTOCOL_MESSAGE_LEN)
+                .finish(),
+        )
+        .next()
+        .await
+        .expect("a frame")
+        .expect_err("a bad point is a decode error")
+    });
+
+    assert_eq!(
+        error.to_string(),
+        Error::Parse("invalid shielded point encoding").to_string()
+    );
 }
 
 /// Check that the version test vector deserializes correctly without the relay byte

@@ -73,7 +73,7 @@ fn check_sprout_anchors() {
         .block
         .transactions
         .iter()
-        .map(UnminedTx::from)
+        .map(|tx| UnminedTx::try_from(tx.clone()).expect("test vector transactions decompress"))
         .collect();
 
     let check_unmined_tx_anchors_result = unmined_txs.iter().try_for_each(|unmined_tx| {
@@ -331,7 +331,7 @@ fn check_sapling_anchors() {
         .block
         .transactions
         .iter()
-        .map(UnminedTx::from)
+        .map(|tx| UnminedTx::try_from(tx.clone()).expect("test vector transactions decompress"))
         .collect();
 
     let check_unmined_tx_anchors_result = unmined_txs.iter().try_for_each(|unmined_tx| {

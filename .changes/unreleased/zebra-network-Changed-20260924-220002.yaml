@@ -1,0 +1,4 @@
+project: zebra-network
+kind: Changed
+body: 'Transactions in `tx` messages are decompressed in the codec: a bad point encoding is a codec error that closes the connection, as before lazy decompression.'
+time: 2026-09-24T22:00:02.000000000Z

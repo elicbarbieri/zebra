@@ -1462,21 +1462,16 @@ where
         let raw_transaction = CompressedTransaction::zcash_deserialize(&*raw_transaction_bytes)
             .map_error(server::error::LegacyCode::Deserialization)?;
 
-        // Point rules (deferred from parse), checked before the retry queue
-        // - Bad point stays a decode error, never queued for re-verification each block
-        raw_transaction
-            .clone()
-            .decompress()
+        // Decompressed here: a bad point stays a decode error, never queued for retries
+        let unmined_transaction = UnminedTx::try_from(raw_transaction)
             .map_error(server::error::LegacyCode::Deserialization)?;
 
-        let transaction_hash = raw_transaction.hash();
+        let transaction_hash = unmined_transaction.transaction.hash();
 
         // send transaction to the rpc queue, ignore any error.
-        let raw_transaction = Arc::new(raw_transaction);
-        let unmined_transaction = UnminedTx::from(raw_transaction.clone());
-        let _ = queue_sender.send(unmined_transaction);
+        let _ = queue_sender.send(unmined_transaction.clone());
 
-        let transaction_parameter = mempool::Gossip::Tx(raw_transaction.into());
+        let transaction_parameter = mempool::Gossip::Tx(unmined_transaction);
         let request = mempool::Request::Queue(vec![transaction_parameter]);
 
         let response = mempool.oneshot(request).await.map_misc_error()?;
@@ -2051,7 +2046,12 @@ where
                         return Ok(if verbose {
                             GetRawTransactionResponse::Object(Box::new(
                                 TransactionObject::from_transaction(
-                                    tx.transaction.clone(),
+                                    Arc::new(
+                                        zcash_primitives::transaction::Transaction::clone(
+                                            &tx.transaction,
+                                        )
+                                        .compress(),
+                                    ),
                                     None,
                                     None,
                                     &self.network,

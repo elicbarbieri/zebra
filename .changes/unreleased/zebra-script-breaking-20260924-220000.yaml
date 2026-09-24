@@ -1,0 +1,4 @@
+project: zebra-script
+kind: breaking
+body: '`CachedFfiTransaction::new` takes the decompressed `zcash_primitives::transaction::Transaction` (point rules already checked), and `p2sh_sigop_count` accepts either transaction tier.'
+time: 2026-09-24T22:00:00.000000000Z

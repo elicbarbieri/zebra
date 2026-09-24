@@ -77,7 +77,7 @@ proptest! {
             runner.queue.insert(transaction.clone());
             let queue_transactions = runner.queue.transactions();
             prop_assert_eq!(i + 1, queue_transactions.len());
-            prop_assert_eq!(UnminedTx::from(queue_transactions[i].0.clone()), transaction);
+            prop_assert_eq!(queue_transactions[i].0.clone(), transaction);
         }
 
         // queue is full
@@ -89,14 +89,14 @@ proptest! {
             runner.queue.insert(transaction.clone());
             let queue_transactions = runner.queue.transactions();
             prop_assert_eq!(CHANNEL_AND_QUEUE_CAPACITY, queue_transactions.len());
-            prop_assert_eq!(UnminedTx::from(queue_transactions.last().unwrap().1.0.clone()), transaction.clone());
+            prop_assert_eq!(queue_transactions.last().unwrap().1.0.clone(), transaction.clone());
         }
 
         // check the order of the final queue
         let queue_transactions = runner.queue.transactions();
         for i in 0..CHANNEL_AND_QUEUE_CAPACITY {
             let transaction = transactions[(CHANNEL_AND_QUEUE_CAPACITY - 8) + i].clone();
-            prop_assert_eq!(UnminedTx::from(queue_transactions[i].0.clone()), transaction);
+            prop_assert_eq!(queue_transactions[i].0.clone(), transaction);
         }
     }
 
@@ -170,7 +170,7 @@ proptest! {
             let (mut runner, _sender) = Queue::start();
 
             // insert a transaction to the queue
-            let unmined_transaction = UnminedTx::from(std::sync::Arc::new(transaction));
+            let unmined_transaction = UnminedTx::try_from(std::sync::Arc::new(transaction)).expect("test transactions decompress");
             runner.queue.insert(unmined_transaction.clone());
             let transactions = runner.queue.transactions();
             prop_assert_eq!(transactions.len(), 1);
@@ -253,7 +253,7 @@ proptest! {
             let (mut runner, _sender) = Queue::start();
 
             // insert a transaction to the queue
-            let unmined_transaction = UnminedTx::from(std::sync::Arc::new(transaction.clone()));
+            let unmined_transaction = UnminedTx::try_from(std::sync::Arc::new(transaction.clone())).expect("test transactions decompress");
             runner.queue.insert(unmined_transaction.clone());
             prop_assert_eq!(runner.queue.transactions().len(), 1);
 
@@ -327,7 +327,7 @@ proptest! {
             let (mut runner, _sender) = Queue::start();
 
             // insert a transaction to the queue
-            let unmined_transaction = UnminedTx::from(std::sync::Arc::new(transaction.clone()));
+            let unmined_transaction = UnminedTx::try_from(std::sync::Arc::new(transaction.clone())).expect("test transactions decompress");
             runner.queue.insert(unmined_transaction.clone());
             let transactions = runner.queue.transactions();
             prop_assert_eq!(transactions.len(), 1);
@@ -339,7 +339,7 @@ proptest! {
             let send_task = tokio::spawn(Runner::retry(mempool.clone(), transactions_vec.clone()));
 
             // retry will queue the transaction to mempool
-            let gossip = Gossip::Tx(UnminedTx::from(std::sync::Arc::new(transaction.clone())));
+            let gossip = Gossip::Tx(UnminedTx::try_from(std::sync::Arc::new(transaction.clone())).expect("test transactions decompress"));
             let expected_request = Request::Queue(vec![gossip]);
             let (rsp_tx, rsp_rx) = oneshot::channel();
             let _ = rsp_tx.send(Ok(()));

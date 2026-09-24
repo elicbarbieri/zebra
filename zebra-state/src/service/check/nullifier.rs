@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use tracing::trace;
-use zebra_chain::transaction::{CompressedTransaction, TransactionExt};
+use zebra_chain::transaction::TransactionExt;
 
 use crate::{
     error::DuplicateNullifierError,
@@ -108,10 +108,10 @@ where
 ///
 /// [`CompressedTransaction`]: zebra_chain::transaction::CompressedTransaction
 #[tracing::instrument(skip_all)]
-pub(crate) fn tx_no_duplicates_in_chain(
+pub(crate) fn tx_no_duplicates_in_chain<T: TransactionExt>(
     finalized_chain: &ZebraDb,
     non_finalized_chain: Option<&Arc<Chain>>,
-    transaction: &Arc<CompressedTransaction>,
+    transaction: &T,
 ) -> Result<(), ValidateContextError> {
     // All the nullifier accessors yield owned nullifiers.
     find_duplicate_nullifier(
