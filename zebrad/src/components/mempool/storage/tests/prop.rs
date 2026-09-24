@@ -10,10 +10,7 @@ use proptest_derive::Arbitrary;
 use zebra_chain::{
     amount::Amount,
     fmt::{DisplayToDebug, SummaryDebug},
-    primitives::{Groth16Proof, ZkSnarkProof},
-    serialization::ZcashDeserialize,
-    sprout,
-    transaction::{self, JoinSplitData, Transaction, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, Transaction, UnminedTxId, VerifiedUnminedTx},
     transparent, LedgerState,
 };
 
@@ -461,29 +458,8 @@ impl SpendConflictTestInput {
                 mut second,
                 conflict,
             } => {
-                // Only transparent conflicts can be applied to the new Transaction type.
-                // Sprout/Sapling conflicts require mutating shielded data which isn't supported.
-                if matches!(conflict, SpendConflictForTransactionV4::Transparent(_)) {
-                    conflict.clone().apply_to(&mut first);
-                    conflict.apply_to(&mut second);
-                } else {
-                    // Create a transparent conflict as fallback: add the same dummy input
-                    // to both transactions so they conflict on that input's outpoint.
-                    let dummy_input = transparent::Input::zcash_deserialize(
-                        &zebra_test::vectors::DUMMY_INPUT1[..],
-                    )
-                    .expect("dummy input should deserialize");
-                    let mut first_inputs = first.inputs();
-                    first_inputs.push(dummy_input.clone());
-                    first = Transaction::clone(&first)
-                        .with_transparent_inputs(first_inputs)
-                        .into();
-                    let mut second_inputs = second.inputs();
-                    second_inputs.push(dummy_input);
-                    second = Transaction::clone(&second)
-                        .with_transparent_inputs(second_inputs)
-                        .into();
-                }
+                conflict.clone().apply_to(&mut first);
+                conflict.apply_to(&mut second);
 
                 (first, second)
             }
@@ -492,25 +468,8 @@ impl SpendConflictTestInput {
                 mut second,
                 conflict,
             } => {
-                if matches!(conflict, SpendConflictForTransactionV5::Transparent(_)) {
-                    conflict.clone().apply_to(&mut first);
-                    conflict.apply_to(&mut second);
-                } else {
-                    let dummy_input = transparent::Input::zcash_deserialize(
-                        &zebra_test::vectors::DUMMY_INPUT1[..],
-                    )
-                    .expect("dummy input should deserialize");
-                    let mut first_inputs = first.inputs();
-                    first_inputs.push(dummy_input.clone());
-                    first = Transaction::clone(&first)
-                        .with_transparent_inputs(first_inputs)
-                        .into();
-                    let mut second_inputs = second.inputs();
-                    second_inputs.push(dummy_input);
-                    second = Transaction::clone(&second)
-                        .with_transparent_inputs(second_inputs)
-                        .into();
-                }
+                conflict.clone().apply_to(&mut first);
+                conflict.apply_to(&mut second);
 
                 (first, second)
             }
@@ -549,7 +508,6 @@ impl SpendConflictTestInput {
         };
 
         Self::remove_transparent_conflicts(&mut first, &mut second);
-        Self::remove_sprout_conflicts(&mut first, &mut second);
 
         standardize_transaction(&mut first.0);
         standardize_transaction(&mut second.0);
@@ -602,68 +560,15 @@ impl SpendConflictTestInput {
             *transaction = transaction.clone().with_transparent_inputs(filtered_inputs);
         }
     }
-
-    /// Find identical Sprout nullifiers revealed by both transactions, then remove the joinsplits
-    /// that contain them from both transactions.
-    ///
-    /// NOTE: This function is not fully implemented with the new Transaction type.
-    /// The new Transaction wraps librustzcash and doesn't support direct mutation of shielded data.
-    fn remove_sprout_conflicts(_first: &mut Transaction, _second: &mut Transaction) {
-        // TODO: Reimplement when Transaction API supports removing individual joinsplits.
-        // For now, this is a no-op since proptest-generated arbitrary transactions
-        // from the new API are transparent-only and have no sprout data.
-    }
-
-    /// Remove from a transaction's [`JoinSplitData`] the joinsplits that contain nullifiers
-    /// present in the `conflicts` set.
-    ///
-    /// This may clear the entire Sprout joinsplit data.
-    #[allow(dead_code)] // Only used by code paths that require Transaction mutation support
-    fn remove_joinsplits_with_conflicts<P: ZkSnarkProof>(
-        maybe_joinsplit_data: &mut Option<JoinSplitData<P>>,
-        conflicts: &HashSet<sprout::Nullifier>,
-    ) {
-        let mut should_clear_joinsplit_data = false;
-
-        if let Some(joinsplit_data) = maybe_joinsplit_data.as_mut() {
-            joinsplit_data.rest.retain(|joinsplit| {
-                !joinsplit
-                    .nullifiers
-                    .iter()
-                    .any(|nullifier| conflicts.contains(nullifier))
-            });
-
-            let first_joinsplit_should_be_removed = joinsplit_data
-                .first
-                .nullifiers
-                .iter()
-                .any(|nullifier| conflicts.contains(nullifier));
-
-            if first_joinsplit_should_be_removed {
-                if joinsplit_data.rest.is_empty() {
-                    should_clear_joinsplit_data = true;
-                } else {
-                    joinsplit_data.first = joinsplit_data.rest.remove(0);
-                }
-            }
-        }
-
-        if should_clear_joinsplit_data {
-            *maybe_joinsplit_data = None;
-        }
-    }
 }
 
 /// A spend conflict valid for V4 transactions.
-#[allow(dead_code)] // Sprout/Sapling variants kept for future Transaction mutation support
 #[derive(Arbitrary, Clone, Debug)]
 enum SpendConflictForTransactionV4 {
     Transparent(Box<TransparentSpendConflict>),
-    Sprout(Box<SproutSpendConflict>),
 }
 
 /// A spend conflict valid for V5 transactions.
-#[allow(dead_code)] // Sapling/Orchard variants kept for future Transaction mutation support
 #[derive(Arbitrary, Clone, Debug)]
 enum SpendConflictForTransactionV5 {
     Transparent(Box<TransparentSpendConflict>),
@@ -675,31 +580,15 @@ struct TransparentSpendConflict {
     new_input: DisplayToDebug<transparent::Input>,
 }
 
-/// A conflict caused by revealing the same Sprout nullifier.
-#[allow(dead_code)] // Fields only used by code paths that require Transaction mutation support
-#[derive(Arbitrary, Clone, Debug)]
-struct SproutSpendConflict {
-    new_joinsplit_data: DisplayToDebug<transaction::JoinSplitData<Groth16Proof>>,
-}
-
 impl SpendConflictForTransactionV4 {
     /// Apply a spend conflict to a V4 transaction.
-    ///
-    /// NOTE: This function is not fully implemented with the new Transaction type.
-    /// The new Transaction wraps librustzcash and doesn't support direct mutation of shielded data.
-    /// For transparent conflicts, we rebuild the transaction with updated inputs.
     pub fn apply_to(self, transaction_v4: &mut Transaction) {
         use SpendConflictForTransactionV4::*;
         match self {
             Transparent(transparent_conflict) => {
-                // Apply transparent conflict by adding the new input to the transaction.
                 let mut inputs = transaction_v4.inputs();
                 transparent_conflict.apply_to(&mut inputs);
                 *transaction_v4 = transaction_v4.clone().with_transparent_inputs(inputs);
-            }
-            Sprout(_) => {
-                // TODO: Reimplement when Transaction API supports mutating shielded data.
-                // Sprout and Sapling conflicts cannot be applied to the new transparent-only transactions.
             }
         }
     }
@@ -707,15 +596,10 @@ impl SpendConflictForTransactionV4 {
 
 impl SpendConflictForTransactionV5 {
     /// Apply a spend conflict to a V5 transaction.
-    ///
-    /// NOTE: This function is not fully implemented with the new Transaction type.
-    /// The new Transaction wraps librustzcash and doesn't support direct mutation of shielded data.
-    /// For transparent conflicts, we rebuild the transaction with updated inputs.
     pub fn apply_to(self, transaction_v5: &mut Transaction) {
         use SpendConflictForTransactionV5::*;
         match self {
             Transparent(transparent_conflict) => {
-                // Apply transparent conflict by adding the new input to the transaction.
                 let mut inputs = transaction_v5.inputs();
                 transparent_conflict.apply_to(&mut inputs);
                 *transaction_v5 = transaction_v5.clone().with_transparent_inputs(inputs);
@@ -731,26 +615,6 @@ impl TransparentSpendConflict {
     /// conflict with any other transaction that also has that same new input.
     pub fn apply_to(self, inputs: &mut Vec<transparent::Input>) {
         inputs.push(self.new_input.0);
-    }
-}
-
-#[allow(dead_code)] // Only used by code paths that require Transaction mutation support
-impl SproutSpendConflict {
-    /// Apply a Sprout spend conflict.
-    ///
-    /// Ensures that a transaction's `joinsplit_data` has a nullifier used to represent a conflict.
-    /// If the transaction already has Sprout joinsplits, the first nullifier is replaced with the
-    /// new nullifier. Otherwise, a joinsplit is inserted with that new nullifier in the
-    /// transaction.
-    ///
-    /// The transaction will then conflict with any other transaction with the same new nullifier.
-    pub fn apply_to(self, joinsplit_data: &mut Option<transaction::JoinSplitData<Groth16Proof>>) {
-        if let Some(existing_joinsplit_data) = joinsplit_data.as_mut() {
-            existing_joinsplit_data.first.nullifiers[0] =
-                self.new_joinsplit_data.first.nullifiers[0];
-        } else {
-            *joinsplit_data = Some(self.new_joinsplit_data.0);
-        }
     }
 }
 

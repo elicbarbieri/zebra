@@ -5,11 +5,10 @@ use std::sync::Arc;
 use zebra_chain::{
     amount::Amount,
     block::Block,
-    primitives::{ed25519, x25519, Groth16Proof},
     sapling,
     serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
-    sprout::{self, JoinSplit},
-    transaction::{JoinSplitData, Transaction, UnminedTx},
+    sprout,
+    transaction::{Transaction, UnminedTx},
 };
 
 use crate::{
@@ -139,72 +138,30 @@ fn prepare_sprout_block(
                 .sprout_joinsplit_pub_key()
                 .expect("V2 transactions with joinsplit data must have a pub key");
 
-            // Build new JoinSplit<Groth16Proof> values from the JsDescriptions,
-            // changing the proof to Groth16 and zeroing the value balance for semantic validation.
-            let new_joinsplits: Vec<JoinSplit<Groth16Proof>> = joinsplit_descs
+            // v4 = Groth16 proofs; zero public values (value pool checks pass, anchor under test)
+            let joinsplits: Vec<_> = joinsplit_descs
                 .iter()
                 .map(|js| {
-                    let anchor = sprout::tree::Root::from(js.anchor());
-                    let raw_nullifiers = js.nullifiers();
-                    let nullifiers = [
-                        sprout::note::Nullifier::from(raw_nullifiers[0]),
-                        sprout::note::Nullifier::from(raw_nullifiers[1]),
-                    ];
-                    let raw_commitments = js.commitments();
-                    let commitments = [
-                        sprout::commitment::NoteCommitment::from(raw_commitments[0]),
-                        sprout::commitment::NoteCommitment::from(raw_commitments[1]),
-                    ];
-                    let raw_seed = js.random_seed();
-                    let random_seed = sprout::RandomSeed::from(*raw_seed);
-                    let raw_macs = js.macs();
-                    let vmacs = [
-                        sprout::note::Mac::from(raw_macs[0]),
-                        sprout::note::Mac::from(raw_macs[1]),
-                    ];
-                    JoinSplit {
-                        vpub_old: Amount::zero(),
-                        vpub_new: Amount::zero(),
-                        anchor,
-                        nullifiers,
-                        commitments,
-                        ephemeral_key: x25519::PublicKey::from([0u8; 32]),
-                        random_seed,
-                        vmacs,
-                        zkproof: Groth16Proof::from([0; 192]),
-                        enc_ciphertexts: [
-                            sprout::note::EncryptedNote([0u8; 601]),
-                            sprout::note::EncryptedNote([0u8; 601]),
-                        ],
-                    }
+                    let js =
+                        sprout::arbitrary::with_proof(js, sprout::SproutProof::Groth([0u8; 192]));
+                    sprout::arbitrary::with_values(&js, Amount::zero(), Amount::zero())
                 })
                 .collect();
 
-            let joinsplit_data = new_joinsplits
-                .split_first()
-                .map(|(first, rest)| JoinSplitData {
-                    first: first.clone(),
-                    rest: rest.to_vec(),
-                    pub_key,
-                    sig: ed25519::Signature::from_bytes(&[0u8; 64]),
-                });
+            let joinsplit_data = (!joinsplits.is_empty()).then(|| sprout::JoinSplitData {
+                joinsplits,
+                joinsplit_pubkey: <[u8; 32]>::from(pub_key),
+                joinsplit_sig: [0u8; 64],
+            });
 
             // Build a V4 transaction with the adjusted joinsplit data.
-            let new_tx = build_v4_tx_with_joinsplit_data(joinsplit_data);
+            let new_tx = Transaction::test_v4_with_sprout(joinsplit_data);
 
             // Add the new adjusted transaction to [`block_to_prepare`].
             block_to_prepare.transactions.push(Arc::new(new_tx));
         });
 
     Arc::new(block_to_prepare).prepare()
-}
-
-/// Build a V4 (Sapling) transaction containing the given sprout joinsplit data.
-/// Transparent inputs/outputs and sapling shielded data are empty.
-fn build_v4_tx_with_joinsplit_data(
-    joinsplit_data: Option<JoinSplitData<Groth16Proof>>,
-) -> Transaction {
-    Transaction::test_v4_with_joinsplit_data(joinsplit_data.as_ref())
 }
 
 /// Build a V4 transaction with the same sapling shielded data as `tx`,

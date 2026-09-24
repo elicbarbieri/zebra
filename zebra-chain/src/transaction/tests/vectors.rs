@@ -15,7 +15,7 @@ use crate::{
     block::{Block, Height, MAX_BLOCK_BYTES},
     orchard,
     parameters::Network,
-    primitives::{x25519, zcash_primitives::PrecomputedTxData, Groth16Proof},
+    primitives::zcash_primitives::PrecomputedTxData,
     serialization::{
         SerializationError, ZcashDeserialize, ZcashDeserializeInto, ZcashDeserializeWithContext,
         ZcashSerialize,
@@ -1702,45 +1702,37 @@ fn expiry_height_preserves_out_of_range_values() {
 fn sprout_aggregate_value_balance_out_of_range_is_rejected() {
     let _init_guard = zebra_test::init();
 
-    let zero = Amount::zero();
-    let max_money = Amount::try_from(MAX_MONEY).expect("MAX_MONEY is a valid nonnegative amount");
-    let mac = sprout::note::Mac::from([0u8; 32]);
+    let max_money = zcash_protocol::value::Zatoshis::const_from_u64(MAX_MONEY as u64);
 
     // A dummy JoinSplit moving MAX_MONEY into the transparent pool: individually in range.
-    let joinsplit = sprout::JoinSplit {
-        vpub_old: zero,
-        vpub_new: max_money,
-        anchor: sprout::tree::Root::default(),
-        nullifiers: [
-            sprout::note::Nullifier([0u8; 32].into()),
-            sprout::note::Nullifier([1u8; 32].into()),
-        ],
-        commitments: [sprout::commitment::NoteCommitment::from([0u8; 32]); 2],
-        ephemeral_key: x25519::PublicKey::from([0u8; 32]),
-        random_seed: sprout::RandomSeed::from([0u8; 32]),
-        vmacs: [mac.clone(), mac],
-        zkproof: Groth16Proof([0u8; 192]),
-        enc_ciphertexts: [sprout::note::EncryptedNote([0u8; 601]); 2],
+    let joinsplit = sprout::JoinSplit::from_parts(
+        zcash_protocol::value::Zatoshis::ZERO,
+        max_money,
+        [0u8; 32],
+        [[0u8; 32], [1u8; 32]],
+        [[0u8; 32]; 2],
+        [0u8; 32],
+        [0u8; 32],
+        [[0u8; 32]; 2],
+        sprout::SproutProof::Groth([0u8; 192]),
+        [[0u8; zcash_primitives::transaction::components::sprout::NOTE_CIPHERTEXT_SIZE]; 2],
+    );
+
+    let bundle = |joinsplits: Vec<sprout::JoinSplit>| sprout::JoinSplitData {
+        joinsplits,
+        joinsplit_pubkey: [0u8; 32],
+        joinsplit_sig: [0u8; 64],
     };
 
     // One JoinSplit: the aggregate is exactly MAX_MONEY, still in range.
-    let in_range = Transaction::test_v4_with_joinsplit_data(Some(&JoinSplitData {
-        first: joinsplit.clone(),
-        rest: vec![],
-        pub_key: [0u8; 32].into(),
-        sig: [0u8; 64].into(),
-    }));
+    let in_range = Transaction::test_v4_with_sprout(Some(bundle(vec![joinsplit.clone()])));
     in_range
         .sprout_value_balance()
         .expect("an aggregate of MAX_MONEY is in range");
 
     // Two JoinSplits: the aggregate is 2 * MAX_MONEY, out of range.
-    let out_of_range = Transaction::test_v4_with_joinsplit_data(Some(&JoinSplitData {
-        first: joinsplit.clone(),
-        rest: vec![joinsplit],
-        pub_key: [0u8; 32].into(),
-        sig: [0u8; 64].into(),
-    }));
+    let out_of_range =
+        Transaction::test_v4_with_sprout(Some(bundle(vec![joinsplit.clone(), joinsplit])));
     assert!(
         matches!(
             out_of_range.sprout_value_balance(),
