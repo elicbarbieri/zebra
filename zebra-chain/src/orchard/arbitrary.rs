@@ -195,17 +195,10 @@ impl Arbitrary for tree::Root {
     type Strategy = BoxedStrategy<Self>;
 }
 
-impl Arbitrary for tree::Node {
-    type Parameters = ();
-
-    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        pallas_base_strat()
-            .prop_map(|base| {
-                Self::try_from(base.to_repr())
-                    .expect("a valid generated Orchard note commitment tree root")
-            })
-            .boxed()
-    }
-
-    type Strategy = BoxedStrategy<Self>;
+/// Canonical Orchard tree node
+pub fn node() -> impl Strategy<Value = ::orchard::tree::MerkleHashOrchard> {
+    pallas_base_strat().prop_map(|base| {
+        ::orchard::tree::MerkleHashOrchard::from_bytes(&base.to_repr())
+            .expect("pallas::Base encodes canonically")
+    })
 }

@@ -6,7 +6,6 @@ use zebra_chain::{
     amount::{Amount, NonNegative},
     block::{self, Block, Height},
     history_tree::NonEmptyHistoryTree,
-    orchard,
     parallel::tree::NoteCommitmentTrees,
     parameters::{Network, NetworkUpgrade},
     primitives::zcash_history::BlockCommitmentTreeRoots,
@@ -1077,7 +1076,8 @@ fn fork_drops_subtrees_above_fork_point() -> Result<()> {
     let tip_height = block3.coinbase_height().unwrap();
     let sapling_node = sapling_crypto::Node::from_bytes([0; 32]).unwrap();
     chain.insert_sapling_subtree(NoteCommitmentSubtree::new(0u16, tip_height, sapling_node));
-    let orchard_node = orchard::tree::Node::default();
+    let orchard_node =
+        ::orchard::tree::MerkleHashOrchard::from_bytes(&[0; 32]).expect("zero is canonical");
     chain.insert_orchard_subtree(NoteCommitmentSubtree::new(0u16, tip_height, orchard_node));
 
     assert_eq!(chain.sapling_subtrees.len(), 1);

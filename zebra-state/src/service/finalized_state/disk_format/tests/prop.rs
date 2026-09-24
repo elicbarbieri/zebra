@@ -471,9 +471,9 @@ fn roundtrip_orchard_tree_root() {
 fn roundtrip_orchard_subtree_data() {
     let _init_guard = zebra_test::init();
 
-    proptest!(|(mut val in any::<NoteCommitmentSubtreeData<orchard::tree::Node>>())| {
-        val.end_height.0 %= MAX_ON_DISK_HEIGHT.0 + 1;
-        assert_value_properties(val)
+    proptest!(|((end_height, root) in (any::<Height>(), orchard::arbitrary::node()))| {
+        let end_height = Height(end_height.0 % (MAX_ON_DISK_HEIGHT.0 + 1));
+        assert_value_properties(NoteCommitmentSubtreeData::new(end_height, root))
     });
 }
 

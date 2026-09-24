@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use zebra_chain::{
     block::{Block, Hash, Height, MAX_BLOCK_LOCATOR_LENGTH},
-    orchard,
     parameters::Network::*,
     serialization::ZcashDeserializeInto,
     subtree::{NoteCommitmentSubtree, NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
@@ -315,7 +314,8 @@ async fn test_sapling_subtrees() -> Result<()> {
 /// non-finalized states correctly.
 #[tokio::test]
 async fn test_orchard_subtrees() -> Result<()> {
-    let dummy_subtree_root = orchard::tree::Node::default();
+    let dummy_subtree_root =
+        ::orchard::tree::MerkleHashOrchard::from_bytes(&[0; 32]).expect("zero is canonical");
 
     // Prepare the finalized state.
     let db_subtree = NoteCommitmentSubtree::new(0, Height(1), dummy_subtree_root);
@@ -683,14 +683,21 @@ async fn any_chain_treestate_finds_side_chain_trees() -> Result<()> {
             sapling_tree.append(cm_u).expect("the tree is not full");
         }
 
-        let mut orchard_tree = orchard::tree::NoteCommitmentTree::default();
+        let cmx = |n: u64| {
+            let mut bytes = [0u8; 32];
+            bytes[..8].copy_from_slice(&n.to_le_bytes());
+            orchard::note::ExtractedNoteCommitment::from_bytes(&bytes)
+                .expect("a small field element is canonical")
+        };
+
+        let mut orchard_tree = zebra_chain::orchard::tree::NoteCommitmentTree::default();
         orchard_tree
-            .append(seed.into())
+            .append(cmx(seed))
             .expect("the tree is not full");
 
-        let mut ironwood_tree = orchard::tree::NoteCommitmentTree::default();
+        let mut ironwood_tree = zebra_chain::orchard::tree::NoteCommitmentTree::default();
         ironwood_tree
-            .append((seed + 100).into())
+            .append(cmx(seed + 100))
             .expect("the tree is not full");
 
         chain

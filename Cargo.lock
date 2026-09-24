@@ -7310,7 +7310,6 @@ version = "14.0.0"
 dependencies = [
  "bech32",
  "bitflags",
- "bitvec",
  "blake2b_simd",
  "bounded-vec",
  "bs58",
@@ -7350,7 +7349,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha2 0.10.9",
- "sinsemilla",
  "spandoc",
  "strum",
  "tempfile",
@@ -7588,6 +7586,7 @@ dependencies = [
  "metrics",
  "mset",
  "once_cell",
+ "orchard",
  "proptest",
  "proptest-derive",
  "rand 0.10.2",

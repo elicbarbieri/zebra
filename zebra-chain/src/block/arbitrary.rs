@@ -489,19 +489,11 @@ impl Block {
                                 sapling_tree.append(sapling_note_commitment).unwrap();
                             }
                             for orchard_note_commitment in transaction.orchard_note_commitments() {
-                                use halo2::pasta::group::ff::PrimeField;
-                                let cm =
-                                    pallas::Base::from_repr(orchard_note_commitment.to_bytes())
-                                        .expect("valid orchard note commitment");
-                                orchard_tree.append(cm).unwrap();
+                                orchard_tree.append(orchard_note_commitment).unwrap();
                             }
                             for ironwood_note_commitment in transaction.ironwood_note_commitments()
                             {
-                                use halo2::pasta::group::ff::PrimeField;
-                                let cm =
-                                    pallas::Base::from_repr(ironwood_note_commitment.to_bytes())
-                                        .expect("valid ironwood note commitment");
-                                ironwood_tree.append(cm).unwrap();
+                                ironwood_tree.append(ironwood_note_commitment).unwrap();
                             }
                         }
                         new_transactions.push(Arc::new(transaction));

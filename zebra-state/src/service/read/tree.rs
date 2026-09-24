@@ -149,7 +149,10 @@ pub fn orchard_subtrees<C>(
     chain: Option<C>,
     db: &ZebraDb,
     range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex> + Clone,
-) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>
+) -> BTreeMap<
+    NoteCommitmentSubtreeIndex,
+    NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+>
 where
     C: AsRef<Chain>,
 {
@@ -220,7 +223,10 @@ pub fn ironwood_subtrees<C>(
     chain: Option<C>,
     db: &ZebraDb,
     range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex> + Clone,
-) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>
+) -> BTreeMap<
+    NoteCommitmentSubtreeIndex,
+    NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+>
 where
     C: AsRef<Chain>,
 {
