@@ -6,15 +6,14 @@ use itertools::Itertools;
 use proptest::prelude::*;
 
 use zebra_chain::{
+    amount::Amount,
     block::{Block, Height},
-    fmt::TypeNameToDebug,
     orchard,
     parameters::NetworkUpgrade::Nu5,
-    primitives::Groth16Proof,
     sapling,
     serialization::ZcashDeserializeInto,
-    sprout::JoinSplit,
-    transaction::{JoinSplitData, LockTime, Transaction},
+    sprout,
+    transaction::{LockTime, Transaction},
 };
 
 use crate::{
@@ -55,8 +54,8 @@ proptest! {
     /// (And that the test infrastructure generally works.)
     #[test]
     fn accept_distinct_arbitrary_sprout_nullifiers_in_one_block(
-        mut joinsplit in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        joinsplit_data in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
+        joinsplit in sprout::arbitrary::joinsplit(true),
+        joinsplit_data in sprout::arbitrary::joinsplit_data(true),
         use_finalized_state in any::<bool>(),
     ) {
         let _init_guard = zebra_test::init();
@@ -65,10 +64,12 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        make_distinct_nullifiers(&mut joinsplit.nullifiers);
-        let expected_nullifiers = joinsplit.nullifiers;
+        let mut nullifiers = *joinsplit.nullifiers();
+        make_distinct_nullifiers(&mut nullifiers);
+        let joinsplit = sprout::arbitrary::with_nullifiers(&joinsplit, nullifiers);
+        let expected_nullifiers = nullifiers.map(sprout::Nullifier::from);
 
-        let transaction = transaction_v4_with_joinsplit_data(joinsplit_data.0, [joinsplit.0]);
+        let transaction = transaction_v4_with_joinsplit_data(joinsplit_data, [joinsplit]);
 
         // convert the coinbase transaction to a version that the non-finalized state will accept
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
@@ -127,8 +128,8 @@ proptest! {
     /// if they come from the same JoinSplit.
     #[test]
     fn reject_duplicate_sprout_nullifiers_in_joinsplit(
-        mut joinsplit in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        joinsplit_data in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
+        joinsplit in sprout::arbitrary::joinsplit(true),
+        joinsplit_data in sprout::arbitrary::joinsplit_data(true),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -138,10 +139,12 @@ proptest! {
 
         // create a double-spend within the same joinsplit
         // this might not actually be valid under the nullifier generation consensus rules
-        let duplicate_nullifier = joinsplit.nullifiers[0];
-        joinsplit.nullifiers[1] = duplicate_nullifier;
+        let mut nullifiers = *joinsplit.nullifiers();
+        nullifiers[1] = nullifiers[0];
+        let joinsplit = sprout::arbitrary::with_nullifiers(&joinsplit, nullifiers);
+        let duplicate_nullifier = sprout::Nullifier::from(nullifiers[0]);
 
-        let transaction = transaction_v4_with_joinsplit_data(joinsplit_data.0, [joinsplit.0]);
+        let transaction = transaction_v4_with_joinsplit_data(joinsplit_data, [joinsplit]);
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
 
@@ -179,9 +182,9 @@ proptest! {
     /// if they come from different JoinSplits in the same JoinSplitData/Transaction.
     #[test]
     fn reject_duplicate_sprout_nullifiers_in_transaction(
-        mut joinsplit1 in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        mut joinsplit2 in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        joinsplit_data in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
+        joinsplit1 in sprout::arbitrary::joinsplit(true),
+        joinsplit2 in sprout::arbitrary::joinsplit(true),
+        joinsplit_data in sprout::arbitrary::joinsplit_data(true),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -189,19 +192,18 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        make_distinct_nullifiers(
-            joinsplit1
-                .nullifiers
-                .iter_mut()
-                .chain(joinsplit2.nullifiers.iter_mut()),
-        );
+        let mut nullifiers1 = *joinsplit1.nullifiers();
+        let mut nullifiers2 = *joinsplit2.nullifiers();
+        make_distinct_nullifiers(nullifiers1.iter_mut().chain(nullifiers2.iter_mut()));
 
         // create a double-spend across two joinsplits
-        let duplicate_nullifier = joinsplit1.nullifiers[0];
-        joinsplit2.nullifiers[0] = duplicate_nullifier;
+        nullifiers2[0] = nullifiers1[0];
+        let joinsplit1 = sprout::arbitrary::with_nullifiers(&joinsplit1, nullifiers1);
+        let joinsplit2 = sprout::arbitrary::with_nullifiers(&joinsplit2, nullifiers2);
+        let duplicate_nullifier = sprout::Nullifier::from(nullifiers1[0]);
 
         let transaction =
-            transaction_v4_with_joinsplit_data(joinsplit_data.0, [joinsplit1.0, joinsplit2.0]);
+            transaction_v4_with_joinsplit_data(joinsplit_data, [joinsplit1, joinsplit2]);
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
 
@@ -236,10 +238,10 @@ proptest! {
     /// if they come from different transactions in the same block.
     #[test]
     fn reject_duplicate_sprout_nullifiers_in_block(
-        mut joinsplit1 in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        mut joinsplit2 in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        joinsplit_data1 in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
-        joinsplit_data2 in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
+        joinsplit1 in sprout::arbitrary::joinsplit(true),
+        joinsplit2 in sprout::arbitrary::joinsplit(true),
+        joinsplit_data1 in sprout::arbitrary::joinsplit_data(true),
+        joinsplit_data2 in sprout::arbitrary::joinsplit_data(true),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -247,19 +249,18 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        make_distinct_nullifiers(
-            joinsplit1
-                .nullifiers
-                .iter_mut()
-                .chain(joinsplit2.nullifiers.iter_mut()),
-        );
+        let mut nullifiers1 = *joinsplit1.nullifiers();
+        let mut nullifiers2 = *joinsplit2.nullifiers();
+        make_distinct_nullifiers(nullifiers1.iter_mut().chain(nullifiers2.iter_mut()));
 
         // create a double-spend across two transactions
-        let duplicate_nullifier = joinsplit1.nullifiers[0];
-        joinsplit2.nullifiers[0] = duplicate_nullifier;
+        nullifiers2[0] = nullifiers1[0];
+        let joinsplit1 = sprout::arbitrary::with_nullifiers(&joinsplit1, nullifiers1);
+        let joinsplit2 = sprout::arbitrary::with_nullifiers(&joinsplit2, nullifiers2);
+        let duplicate_nullifier = sprout::Nullifier::from(nullifiers1[0]);
 
-        let transaction1 = transaction_v4_with_joinsplit_data(joinsplit_data1.0, [joinsplit1.0]);
-        let transaction2 = transaction_v4_with_joinsplit_data(joinsplit_data2.0, [joinsplit2.0]);
+        let transaction1 = transaction_v4_with_joinsplit_data(joinsplit_data1, [joinsplit1]);
+        let transaction2 = transaction_v4_with_joinsplit_data(joinsplit_data2, [joinsplit2]);
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
 
@@ -296,10 +297,10 @@ proptest! {
     /// if they come from different blocks in the same chain.
     #[test]
     fn reject_duplicate_sprout_nullifiers_in_chain(
-        mut joinsplit1 in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        mut joinsplit2 in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        joinsplit_data1 in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
-        joinsplit_data2 in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
+        joinsplit1 in sprout::arbitrary::joinsplit(true),
+        joinsplit2 in sprout::arbitrary::joinsplit(true),
+        joinsplit_data1 in sprout::arbitrary::joinsplit_data(true),
+        joinsplit_data2 in sprout::arbitrary::joinsplit_data(true),
         duplicate_in_finalized_state in any::<bool>(),
     ) {
         let _init_guard = zebra_test::init();
@@ -311,20 +312,19 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        make_distinct_nullifiers(
-            joinsplit1
-                .nullifiers
-                .iter_mut()
-                .chain(joinsplit2.nullifiers.iter_mut()),
-        );
-        let expected_nullifiers = joinsplit1.nullifiers;
+        let mut nullifiers1 = *joinsplit1.nullifiers();
+        let mut nullifiers2 = *joinsplit2.nullifiers();
+        make_distinct_nullifiers(nullifiers1.iter_mut().chain(nullifiers2.iter_mut()));
+        let expected_nullifiers = nullifiers1.map(sprout::Nullifier::from);
 
         // create a double-spend across two blocks
-        let duplicate_nullifier = joinsplit1.nullifiers[0];
-        joinsplit2.nullifiers[0] = duplicate_nullifier;
+        nullifiers2[0] = nullifiers1[0];
+        let joinsplit1 = sprout::arbitrary::with_nullifiers(&joinsplit1, nullifiers1);
+        let joinsplit2 = sprout::arbitrary::with_nullifiers(&joinsplit2, nullifiers2);
+        let duplicate_nullifier = sprout::Nullifier::from(nullifiers1[0]);
 
-        let transaction1 = Arc::new(transaction_v4_with_joinsplit_data(joinsplit_data1.0, [joinsplit1.0]));
-        let transaction2 = transaction_v4_with_joinsplit_data(joinsplit_data2.0, [joinsplit2.0]);
+        let transaction1 = Arc::new(transaction_v4_with_joinsplit_data(joinsplit_data1, [joinsplit1]));
+        let transaction2 = transaction_v4_with_joinsplit_data(joinsplit_data2, [joinsplit2]);
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
         block2.transactions[0] = transaction_v4_from_coinbase(&block2.transactions[0]).into();
@@ -974,8 +974,8 @@ proptest! {
     /// already finalized must be rejected with `DuplicateSproutNullifier`.
     #[test]
     fn reject_block_containing_sprout_tx_already_in_finalized_chain(
-        mut joinsplit in TypeNameToDebug::<JoinSplit<Groth16Proof>>::arbitrary(),
-        joinsplit_data in TypeNameToDebug::<JoinSplitData<Groth16Proof>>::arbitrary(),
+        joinsplit in sprout::arbitrary::joinsplit(true),
+        joinsplit_data in sprout::arbitrary::joinsplit_data(true),
     ) {
         let _init_guard = zebra_test::init();
 
@@ -986,10 +986,12 @@ proptest! {
             .zcash_deserialize_into::<Block>()
             .expect("block should deserialize");
 
-        make_distinct_nullifiers(&mut joinsplit.nullifiers);
-        let expected_duplicate_nullifier = joinsplit.nullifiers[0];
+        let mut nullifiers = *joinsplit.nullifiers();
+        make_distinct_nullifiers(&mut nullifiers);
+        let joinsplit = sprout::arbitrary::with_nullifiers(&joinsplit, nullifiers);
+        let expected_duplicate_nullifier = sprout::Nullifier::from(nullifiers[0]);
 
-        let transaction = Arc::new(transaction_v4_with_joinsplit_data(joinsplit_data.0, [joinsplit.0]));
+        let transaction = Arc::new(transaction_v4_with_joinsplit_data(joinsplit_data, [joinsplit]));
 
         block1.transactions[0] = transaction_v4_from_coinbase(&block1.transactions[0]).into();
         block2.transactions[0] = transaction_v4_from_coinbase(&block2.transactions[0]).into();
@@ -1225,43 +1227,24 @@ fn make_distinct_nullifiers<'until_modified, NullifierT>(
     }
 }
 
-/// Return a `Transaction::V4` containing `joinsplit_data`,
-/// with its `JoinSplit`s replaced by `joinsplits`.
+/// Return a V4 transaction containing `joinsplit_data` with its JoinSplits replaced by
+/// `joinsplits`, and zero public values.
 ///
 /// Other fields have empty or default values.
-/// Builds the transaction by serializing to raw V4 bytes and deserializing.
-///
-/// # Panics
-///
-/// If there are no `JoinSplit`s in `joinsplits`.
 fn transaction_v4_with_joinsplit_data(
-    joinsplit_data: impl Into<Option<JoinSplitData<Groth16Proof>>>,
-    joinsplits: impl IntoIterator<Item = JoinSplit<Groth16Proof>>,
+    joinsplit_data: sprout::JoinSplitData,
+    joinsplits: impl IntoIterator<Item = sprout::JoinSplit>,
 ) -> Transaction {
-    let mut joinsplit_data = joinsplit_data.into();
-    let joinsplits: Vec<_> = joinsplits.into_iter().collect();
+    // zero public values, so the chain value pool checks pass
+    let joinsplits = joinsplits
+        .into_iter()
+        .map(|joinsplit| sprout::arbitrary::with_values(&joinsplit, Amount::zero(), Amount::zero()))
+        .collect();
 
-    if let Some(ref mut joinsplit_data) = joinsplit_data {
-        // make sure there are no other nullifiers, by replacing all the joinsplits
-        let (first, rest) = joinsplits
-            .split_first()
-            .expect("unexpected empty joinsplits");
-        joinsplit_data.first = first.clone();
-        joinsplit_data.rest = rest.to_vec();
-
-        // set value balance to 0 to pass the chain value pool checks
-        let zero_amount = 0.try_into().expect("unexpected invalid zero amount");
-
-        joinsplit_data.first.vpub_old = zero_amount;
-        joinsplit_data.first.vpub_new = zero_amount;
-
-        for joinsplit in &mut joinsplit_data.rest {
-            joinsplit.vpub_old = zero_amount;
-            joinsplit.vpub_new = zero_amount;
-        }
-    }
-
-    Transaction::test_v4_with_joinsplit_data(joinsplit_data.as_ref())
+    Transaction::test_v4_with_sprout(Some(sprout::JoinSplitData {
+        joinsplits,
+        ..joinsplit_data
+    }))
 }
 
 /// Return a V4 transaction containing `sapling_shielded_data`'s outputs and `spends`, with a

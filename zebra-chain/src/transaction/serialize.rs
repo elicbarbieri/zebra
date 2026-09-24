@@ -8,15 +8,12 @@ use hex::FromHex;
 
 use crate::{
     block::MAX_BLOCK_BYTES,
-    primitives::ZkSnarkProof,
     serialization::{
-        ReadZcashExt, SerializationError, TrustedPreallocate, ZcashDeserialize,
-        ZcashDeserializeInto, ZcashSerialize,
+        ReadZcashExt, SerializationError, TrustedPreallocate, ZcashDeserialize, ZcashSerialize,
     },
 };
 
 use super::*;
-use crate::sprout;
 
 impl ZcashDeserialize for jubjub::Fq {
     fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
@@ -56,47 +53,6 @@ impl ZcashDeserialize for pallas::Base {
             Err(SerializationError::Parse(
                 "Invalid pallas::Base, input not canonical",
             ))
-        }
-    }
-}
-
-impl<P: ZkSnarkProof> ZcashSerialize for JoinSplitData<P> {
-    fn zcash_serialize<W: io::Write>(&self, mut writer: W) -> Result<(), io::Error> {
-        // Denoted as `nJoinSplit` and `vJoinSplit` in the spec.
-        let joinsplits: Vec<_> = self.joinsplits().cloned().collect();
-        joinsplits.zcash_serialize(&mut writer)?;
-
-        // Denoted as `joinSplitPubKey` in the spec.
-        writer.write_all(&<[u8; 32]>::from(self.pub_key)[..])?;
-
-        // Denoted as `joinSplitSig` in the spec.
-        writer.write_all(&<[u8; 64]>::from(self.sig)[..])?;
-        Ok(())
-    }
-}
-
-impl<P> ZcashDeserialize for Option<JoinSplitData<P>>
-where
-    P: ZkSnarkProof,
-    sprout::JoinSplit<P>: TrustedPreallocate,
-{
-    fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
-        // Denoted as `nJoinSplit` and `vJoinSplit` in the spec.
-        let joinsplits: Vec<sprout::JoinSplit<P>> = (&mut reader).zcash_deserialize_into()?;
-        match joinsplits.split_first() {
-            None => Ok(None),
-            Some((first, rest)) => {
-                // Denoted as `joinSplitPubKey` in the spec.
-                let pub_key = reader.read_32_bytes()?.into();
-                // Denoted as `joinSplitSig` in the spec.
-                let sig = reader.read_64_bytes()?.into();
-                Ok(Some(JoinSplitData {
-                    first: first.clone(),
-                    rest: rest.to_vec(),
-                    pub_key,
-                    sig,
-                }))
-            }
         }
     }
 }
