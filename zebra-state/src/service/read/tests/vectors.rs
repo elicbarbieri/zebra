@@ -636,6 +636,59 @@ async fn any_chain_block_finds_side_chain_blocks() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn raw_block_serves_non_finalized_best_chain_blocks() -> Result<()> {
+    use zebra_chain::serialization::ZcashSerialize;
+
+    use crate::service::read::block::{block, raw_block};
+
+    let _init_guard = zebra_test::init();
+
+    let SideChainFixture {
+        non_finalized_state,
+        finalized_state,
+        best_hash,
+        side_hash,
+    } = side_chain_fixture()?;
+
+    let best_block = block(
+        non_finalized_state.best_chain(),
+        &finalized_state.db,
+        best_hash.into(),
+    )
+    .expect("best chain block is in the fixture's best chain");
+    let best_height = best_block
+        .coinbase_height()
+        .expect("fixture blocks have a height");
+
+    for hash_or_height in [best_hash.into(), best_height.into()] {
+        let raw = raw_block(
+            non_finalized_state.best_chain(),
+            &finalized_state.db,
+            hash_or_height,
+        )
+        .expect("best chain block is found by hash and height");
+
+        assert_eq!(
+            hex::encode(raw.as_ref()),
+            hex::encode(best_block.zcash_serialize_to_vec()?),
+            "{hash_or_height:?}",
+        );
+    }
+
+    assert!(
+        raw_block(
+            non_finalized_state.best_chain(),
+            &finalized_state.db,
+            side_hash.into(),
+        )
+        .is_none(),
+        "raw_block is best chain only, like block",
+    );
+
+    Ok(())
+}
+
 /// Test that the any-chain treestate lookups return the tree of the chain containing the
 /// requested block, including side chains, while the best-chain-only lookups do not find
 /// side chain trees.

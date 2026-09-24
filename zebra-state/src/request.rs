@@ -1216,6 +1216,18 @@ pub enum ReadRequest {
     /// [`block::Height`] using `.into()`.
     Block(HashOrHeight),
 
+    /// Looks up a block by hash or height in the current best chain, serialized.
+    ///
+    /// Finalized blocks reassembled from stored bytes (no transaction parsed or re-serialized).
+    /// Prefer over [`ReadRequest::Block`] when the block is only handed back out.
+    ///
+    /// Returns
+    ///
+    /// * [`ReadResponse::RawBlock(Some(SerializedBlock))`](ReadResponse::RawBlock) if the block
+    ///   is in the best chain;
+    /// * [`ReadResponse::RawBlock(None)`](ReadResponse::RawBlock) otherwise.
+    RawBlock(HashOrHeight),
+
     /// Looks up a block by hash in any current chain or by height in the current best chain.
     ///
     /// Returns
@@ -1649,6 +1661,7 @@ impl ReadRequest {
             ReadRequest::BlockInfo(_) => "block_info",
             ReadRequest::Depth(_) => "depth",
             ReadRequest::Block(_) => "block",
+            ReadRequest::RawBlock(_) => "raw_block",
             ReadRequest::AnyChainBlock(_) => "any_chain_block",
             ReadRequest::BlockAndSize(_) => "block_and_size",
             ReadRequest::SpentOutputs(_) => "spent_outputs",
