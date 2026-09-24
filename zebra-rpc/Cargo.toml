@@ -150,5 +150,10 @@ zebra-state = { path = "../zebra-state", features = [
 
 zebra-test = { path = "../zebra-test" }
 
+# `getblock` throughput vs a cached state (not criterion: no model for req/s at fixed concurrency)
+[[bench]]
+name = "getblock"
+harness = false
+
 [lints]
 workspace = true
