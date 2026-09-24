@@ -422,15 +422,6 @@ impl NoteCommitmentTree {
         self.root().into()
     }
 
-    /// An as-yet unused Sapling note commitment tree leaf node.
-    ///
-    /// Distinct for Sapling, a distinguished hash value of:
-    ///
-    /// Uncommitted^Sapling = I2LEBSP_l_MerkleSapling(1)
-    pub fn uncommitted() -> [u8; 32] {
-        jubjub::Fq::one().to_bytes()
-    }
-
     /// Counts of note commitments added to the tree.
     ///
     /// For Sapling, the tree is capped at 2^32.

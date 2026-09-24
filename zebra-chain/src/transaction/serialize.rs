@@ -3,7 +3,6 @@
 
 use std::{borrow::Borrow, io, sync::Arc};
 
-use halo2::pasta::{group::ff::PrimeField, pallas};
 use hex::FromHex;
 
 use crate::{
@@ -14,48 +13,6 @@ use crate::{
 };
 
 use super::*;
-
-impl ZcashDeserialize for jubjub::Fq {
-    fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let possible_scalar = jubjub::Fq::from_bytes(&reader.read_32_bytes()?);
-
-        if possible_scalar.is_some().into() {
-            Ok(possible_scalar.unwrap())
-        } else {
-            Err(SerializationError::Parse(
-                "Invalid jubjub::Fq, input not canonical",
-            ))
-        }
-    }
-}
-
-impl ZcashDeserialize for pallas::Scalar {
-    fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let possible_scalar = pallas::Scalar::from_repr(reader.read_32_bytes()?);
-
-        if possible_scalar.is_some().into() {
-            Ok(possible_scalar.unwrap())
-        } else {
-            Err(SerializationError::Parse(
-                "Invalid pallas::Scalar, input not canonical",
-            ))
-        }
-    }
-}
-
-impl ZcashDeserialize for pallas::Base {
-    fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let possible_field_element = pallas::Base::from_repr(reader.read_32_bytes()?);
-
-        if possible_field_element.is_some().into() {
-            Ok(possible_field_element.unwrap())
-        } else {
-            Err(SerializationError::Parse(
-                "Invalid pallas::Base, input not canonical",
-            ))
-        }
-    }
-}
 
 impl<T: reddsa::SigType> ZcashSerialize for reddsa::Signature<T> {
     fn zcash_serialize<W: io::Write>(&self, mut writer: W) -> Result<(), io::Error> {
