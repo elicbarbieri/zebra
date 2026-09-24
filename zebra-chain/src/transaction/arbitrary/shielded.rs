@@ -332,6 +332,17 @@ pub fn fake_v6_transaction(
     )
 }
 
+/// `tx`'s Orchard bundle on the point tier (panics without one)
+fn decompressed_orchard_bundle(
+    tx: &crate::transaction::Transaction,
+) -> Bundle<::orchard::bundle::Authorized, ZatBalance> {
+    tx.orchard_bundle()
+        .expect("the transaction must have an Orchard bundle")
+        .clone()
+        .decompress()
+        .expect("arbitrary Orchard bundles decompress")
+}
+
 /// Returns a copy of `tx` whose Orchard bundle carries `value_balance`.
 ///
 /// The bundle is owned by `zcash_primitives` and cannot be mutated in place, so this rebuilds
@@ -342,10 +353,7 @@ pub fn with_orchard_value_balance(
 ) -> crate::transaction::Transaction {
     let balance = ZatBalance::from_i64(value_balance).expect("a valid signed amount");
 
-    let bundle = tx
-        .orchard_bundle()
-        .expect("the transaction must have an Orchard bundle")
-        .clone()
+    let bundle = decompressed_orchard_bundle(&tx)
         .try_map_value_balance::<_, (), _>(|_| Ok(balance))
         .expect("the mapping cannot fail");
 
@@ -359,7 +367,7 @@ pub fn with_orchard_value_balance(
 pub fn insert_fake_orchard_shielded_data(
     tx: crate::transaction::Transaction,
 ) -> crate::transaction::Transaction {
-    let branch_id = tx.inner().consensus_branch_id();
+    let branch_id = tx.consensus_branch_id();
     let bundle = fake_bundle_for_branch(branch_id, ::orchard::ValuePool::Orchard, 1, 0xF00D)
         .expect("the Orchard pool is defined for this transaction's branch");
 
@@ -374,9 +382,7 @@ pub fn with_orchard_flags(
     tx: crate::transaction::Transaction,
     flags: Flags,
 ) -> crate::transaction::Transaction {
-    let bundle = tx
-        .orchard_bundle()
-        .expect("the transaction must have an Orchard bundle");
+    let bundle = decompressed_orchard_bundle(&tx);
 
     let rebuilt = Bundle::try_from_parts(
         bundle.actions().clone(),
@@ -403,9 +409,7 @@ pub fn with_orchard_flags(
 pub fn with_garbage_orchard_authorization(
     tx: crate::transaction::Transaction,
 ) -> crate::transaction::Transaction {
-    let bundle = tx
-        .orchard_bundle()
-        .expect("the transaction must have an Orchard bundle");
+    let bundle = decompressed_orchard_bundle(&tx);
 
     // Rebuild every action with a garbage spend authorization signature, preserving its effects.
     let actions: Vec<_> = bundle

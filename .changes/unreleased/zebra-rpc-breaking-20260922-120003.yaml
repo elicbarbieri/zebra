@@ -1,0 +1,4 @@
+project: zebra-rpc
+kind: breaking
+body: '`ShieldedSpend::cv` and `ShieldedOutput::cv` are now `[u8; 32]` in display order instead of `sapling::ValueCommitment`; the JSON output is unchanged.'
+time: 2026-09-22T12:00:00.000000000Z

@@ -1180,7 +1180,8 @@ fn binding_signatures() {
                 .transactions
             {
                 // Compute bvk and verify binding sig if there's sapling data.
-                if let Some(bundle) = tx.inner().sapling_bundle() {
+                let decompressed = tx.decompress().expect("mined points decompress");
+                if let Some(bundle) = decompressed.sapling_bundle() {
                     let version = tx.version();
 
                     // V5+ sighashes include transparent output amounts, so skip txs with
@@ -1464,28 +1465,10 @@ fn test_coinbase_script() -> Result<()> {
     Ok(())
 }
 
-/// Regression test for the Orchard `rk` identity-point DoS vulnerability.
+/// Identity `rk` (Orchard DoS: halo2 `to_halo2_instance` unwraps its coordinates)
 ///
-/// A v5 transaction whose Orchard action has `rk = [0u8; 32]` (the Pallas
-/// identity point) **deserializes successfully** — Zebra performs no
-/// identity-point check in [`crate::orchard::Action::zcash_deserialize`].
-///
-/// When the same transaction is subsequently fed to the Orchard Halo2 batch
-/// verifier via [`orchard::bundle::BatchValidator::add_bundle`], the call
-/// chain reaches `orchard::circuit::to_halo2_instance()`, which calls
-/// `.coordinates().unwrap()` on the identity point.  `coordinates()` returns
-/// `None` for the identity, so the `unwrap` **panics**, crashing the node.
-///
-/// ## Root cause
-///
-/// `zebra-chain/src/orchard/action.rs:83` reads `rk` as raw bytes with no
-/// identity-point check: `reader.read_32_bytes()?.into()`.  The upstream
-/// `orchard` crate defers validation to signature verification, but
-/// `to_halo2_instance()` unwraps the coordinate extraction unconditionally.
-///
-/// An analogous identity check already exists for `ephemeral_key`
-/// (`zebra-chain/src/orchard/keys.rs:225-238`), demonstrating the correct
-/// pattern.
+/// - parses (no curve math at parse)
+/// - `decompress` (only path to a verifier) = `InvalidPointEncoding`
 #[test]
 fn orchard_rk_identity_point() {
     use crate::transaction::arbitrary::shielded::{
@@ -1520,11 +1503,20 @@ fn orchard_rk_identity_point() {
         "the computed offset must point at the first action's rk",
     );
 
-    // Set rk to the identity point encoding. Deserialization must reject it, rather than
-    // accepting it and later panicking when the coordinate is extracted.
     tx_bytes[V5_FIRST_ACTION_RK_OFFSET..V5_FIRST_ACTION_RK_OFFSET + 32].fill(0);
 
-    Transaction::zcash_deserialize(&tx_bytes[..]).expect_err("rk = identity should fail");
+    let parsed =
+        Transaction::zcash_deserialize(&tx_bytes[..]).expect("rk is not decompressed at parse");
+    assert!(matches!(
+        parsed.decompress(),
+        Err(zcash_primitives::transaction::DecompressionError::Orchard(
+            _
+        ))
+    ));
+    assert!(matches!(
+        parsed.sighasher(NetworkUpgrade::Nu5, Arc::new(Vec::new())),
+        Err(crate::Error::InvalidPointEncoding(_))
+    ));
 }
 
 /// Reproduction for GHSA-rgwx-8r98-p34c:

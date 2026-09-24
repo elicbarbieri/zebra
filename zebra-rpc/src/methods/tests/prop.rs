@@ -239,6 +239,50 @@ proptest! {
         })?;
     }
 
+    /// Bad point: parses (no curve arithmetic at parse), still a decode error (-22), never queued
+    #[test]
+    fn bad_point_tx_is_a_decode_error(network in any::<Network>()) {
+        let (runtime, _init_guard) = zebra_test::init_async();
+        let _guard = runtime.enter();
+        let (mut mempool, mut state, rpc, mempool_tx_queue) = mock_services(network.clone(), NoChainTip);
+
+        // CORRECTNESS: Nothing in this test depends on real time, so we can speed it up.
+        tokio::time::pause();
+
+        let tx = network
+            .block_iter()
+            .flat_map(|(_, block)| {
+                block
+                    .zcash_deserialize_into::<Block>()
+                    .expect("test vector blocks deserialize")
+                    .transactions
+            })
+            .find(|tx| tx.sapling_outputs().next().is_some())
+            .expect("test vectors have a tx with a Sapling output");
+        let cv = tx.sapling_outputs().next().expect("found above").cv().to_bytes();
+        let mut bytes = tx.zcash_serialize_to_vec().expect("serializes");
+        let at = bytes.windows(32).position(|window| window == cv).expect("output 0 cv on the wire");
+        bytes[at..at + 32].copy_from_slice(&[0xff; 32]);
+        prop_assert!(Transaction::zcash_deserialize(&*bytes).is_ok(), "bad point parses");
+
+        runtime.block_on(async move {
+            // Spawned: a mempool request must be issued before `expect_no_requests` looks
+            let send_task =
+                tokio::spawn(async move { rpc.send_raw_transaction(hex::encode(bytes), None).await });
+
+            mempool.expect_no_requests().await?;
+            state.expect_no_requests().await?;
+
+            let result = send_task.await.expect("send_raw_transaction should not panic");
+            check_err_code(result, ErrorCode::ServerError(-22))?;
+
+            // The queue task should continue without errors or panics
+            prop_assert!(mempool_tx_queue.now_or_never().is_none());
+
+            Ok(())
+        })?;
+    }
+
     /// Test that the `getrawmempool` method forwards the transactions in the mempool.
     ///
     /// Make the mock mempool service return a list of transaction IDs, and check that the RPC call
