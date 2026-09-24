@@ -14,15 +14,28 @@ use zebra_chain::{
     },
     serialization::{ZcashDeserialize, ZcashSerialize},
 };
-use zebra_test::vectors::BLOCK_TESTNET_141042_BYTES;
+use zebra_test::vectors::{
+    BLOCK_MAINNET_1687107_BYTES, BLOCK_MAINNET_1687118_BYTES, BLOCK_TESTNET_141042_BYTES,
+};
 
 fn block_serialization(c: &mut Criterion) {
     // Biggest block from `zebra-test`.
     let block141042_bytes: &[u8] = BLOCK_TESTNET_141042_BYTES.as_ref();
     let block141042 = Block::zcash_deserialize(Cursor::new(block141042_bytes)).unwrap();
 
+    let mainnet = |bytes: &[u8]| Block::zcash_deserialize(Cursor::new(bytes)).unwrap();
+
     let blocks = vec![
         ("BLOCK_TESTNET_141042", block141042),
+        // NU5-era mainnet blocks with Sapling + Orchard descriptions
+        (
+            "BLOCK_MAINNET_1687107",
+            mainnet(BLOCK_MAINNET_1687107_BYTES.as_ref()),
+        ),
+        (
+            "BLOCK_MAINNET_1687118",
+            mainnet(BLOCK_MAINNET_1687118_BYTES.as_ref()),
+        ),
         (
             "large_multi_transaction_block",
             large_multi_transaction_block(),
