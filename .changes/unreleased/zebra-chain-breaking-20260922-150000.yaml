@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: 'Sprout JoinSplits are the `zcash_primitives` types: `sprout::JoinSplitData` and `sprout::JoinSplit` are aliases for `components::sprout::{Bundle, JsDescription}`, and `sprout::SproutProof` replaces the generic proof parameter. Removed `transaction::JoinSplitData`, `sprout::{GenericJoinSplit, RandomSeed, keys, note::{EncryptedNote, Mac, NullifierSeed}}`, `primitives::{Bctv14Proof, Groth16Proof, Halo2Proof, ZkSnarkProof}` and the x25519 re-export, along with the test-only JoinSplit wire codec. `Transaction::test_v4_with_sprout` (proptest-impl) replaces `test_v4_with_joinsplit_data`, and `sprout::arbitrary::{joinsplit, joinsplit_data, with_values, with_nullifiers, with_proof}` build the upstream types.'
+time: 2026-09-22T15:00:00.000000000Z

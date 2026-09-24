@@ -20,7 +20,7 @@ use zebra_chain::{
         testnet::{ConfiguredActivationHeights, Parameters},
         Network, NetworkUpgrade,
     },
-    primitives::{ed25519, x25519, Groth16Proof},
+    primitives::ed25519,
     sapling,
     serialization::{DateTime32, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
     sprout,
@@ -30,7 +30,7 @@ use zebra_chain::{
             v5_transactions, with_garbage_orchard_authorization, with_orchard_flags,
             with_orchard_value_balance,
         },
-        zip317, Hash, HashType, JoinSplitData, LockTime, Transaction,
+        zip317, Hash, HashType, LockTime, Transaction,
     },
     transparent::{self, CoinbaseSpendRestriction},
 };
@@ -2170,8 +2170,11 @@ fn v4_transaction_with_conflicting_sprout_nullifier_inside_joinsplit_is_rejected
         let (mut joinsplit_data, signing_key) = mock_sprout_join_split_data();
 
         // Make both nullifiers the same inside the joinsplit transaction
-        let duplicate_nullifier = joinsplit_data.first.nullifiers[0];
-        joinsplit_data.first.nullifiers[1] = duplicate_nullifier;
+        let mut nullifiers = *joinsplit_data.joinsplits[0].nullifiers();
+        nullifiers[1] = nullifiers[0];
+        joinsplit_data.joinsplits[0] =
+            sprout::arbitrary::with_nullifiers(&joinsplit_data.joinsplits[0], nullifiers);
+        let duplicate_nullifier = sprout::Nullifier::from(nullifiers[0]);
 
         // Build a signed V4 transaction with the joinsplit data
         let transaction = build_signed_v4_tx_with_joinsplit_data(
@@ -2222,15 +2225,15 @@ fn v4_transaction_with_conflicting_sprout_nullifier_across_joinsplits_is_rejecte
         // Create a fake Sprout join split
         let (mut joinsplit_data, signing_key) = mock_sprout_join_split_data();
 
-        // Duplicate a nullifier from the created joinsplit
-        let duplicate_nullifier = joinsplit_data.first.nullifiers[1];
+        // Add a new joinsplit that repeats one of the first joinsplit's nullifiers
+        let nullifiers = *joinsplit_data.joinsplits[0].nullifiers();
+        let duplicate_nullifier = sprout::Nullifier::from(nullifiers[1]);
+        let new_joinsplit = sprout::arbitrary::with_nullifiers(
+            &joinsplit_data.joinsplits[0],
+            [nullifiers[1], [2u8; 32]],
+        );
 
-        // Add a new joinsplit with the duplicate nullifier
-        let mut new_joinsplit = joinsplit_data.first.clone();
-        new_joinsplit.nullifiers[0] = duplicate_nullifier;
-        new_joinsplit.nullifiers[1] = sprout::note::Nullifier([2u8; 32].into());
-
-        joinsplit_data.rest.push(new_joinsplit);
+        joinsplit_data.joinsplits.push(new_joinsplit);
 
         // Build a signed V4 transaction with the joinsplit data
         let transaction = build_signed_v4_tx_with_joinsplit_data(
@@ -4093,10 +4096,10 @@ fn mock_coinbase_transparent_output(
 /// Creates a minimal Sapling V4 transaction (no transparent inputs/outputs, no sapling data)
 /// containing the given joinsplit data.
 fn build_v4_tx_with_joinsplit_data(
-    joinsplit_data: Option<JoinSplitData<Groth16Proof>>,
+    joinsplit_data: Option<sprout::JoinSplitData>,
     expiry_height: block::Height,
 ) -> Transaction {
-    let mut tx = Transaction::test_v4_with_joinsplit_data(joinsplit_data.as_ref());
+    let mut tx = Transaction::test_v4_with_sprout(joinsplit_data);
     tx.set_expiry_height(expiry_height);
     tx
 }
@@ -4106,7 +4109,7 @@ fn build_v4_tx_with_joinsplit_data(
 /// Constructs the transaction, computes the sighash, signs it, and patches the signature
 /// into the serialized bytes before re-deserializing.
 fn build_signed_v4_tx_with_joinsplit_data(
-    joinsplit_data: JoinSplitData<Groth16Proof>,
+    joinsplit_data: sprout::JoinSplitData,
     signing_key: &ed25519::SigningKey,
     network_upgrade: NetworkUpgrade,
     expiry_height: block::Height,
@@ -4142,47 +4145,31 @@ fn build_signed_v4_tx_with_joinsplit_data(
 /// The [`transaction::JoinSplitData`] with the dummy [`sprout::JoinSplit`] is returned together
 /// with the [`ed25519::SigningKey`] that can be used to create a signature to later add to the
 /// returned join split data.
-fn mock_sprout_join_split_data() -> (JoinSplitData<Groth16Proof>, ed25519::SigningKey) {
-    // Prepare dummy inputs for the join split
-    let zero_amount = 0_i32
-        .try_into()
-        .expect("Invalid JoinSplit transparent input");
-    let anchor = sprout::tree::Root::default();
-    let first_nullifier = sprout::note::Nullifier([0u8; 32].into());
-    let second_nullifier = sprout::note::Nullifier([1u8; 32].into());
-    let commitment = sprout::commitment::NoteCommitment::from([0u8; 32]);
-    let ephemeral_key =
-        x25519::PublicKey::from(&x25519::EphemeralSecret::random_from_rng(rand::thread_rng()));
-    let random_seed = sprout::RandomSeed::from([0u8; 32]);
-    let mac = sprout::note::Mac::zcash_deserialize(&[0u8; 32][..])
-        .expect("Failure to deserialize dummy MAC");
-    let zkproof = Groth16Proof([0u8; 192]);
-    let encrypted_note = sprout::note::EncryptedNote([0u8; 601]);
+fn mock_sprout_join_split_data() -> (sprout::JoinSplitData, ed25519::SigningKey) {
+    use zcash_primitives::transaction::components::sprout::NOTE_CIPHERTEXT_SIZE;
+    use zcash_protocol::value::Zatoshis;
 
-    // Create an dummy join split
-    let joinsplit = sprout::JoinSplit {
-        vpub_old: zero_amount,
-        vpub_new: zero_amount,
-        anchor,
-        nullifiers: [first_nullifier, second_nullifier],
-        commitments: [commitment; 2],
-        ephemeral_key,
-        random_seed,
-        vmacs: [mac.clone(), mac],
-        zkproof,
-        enc_ciphertexts: [encrypted_note; 2],
-    };
+    let joinsplit = sprout::JoinSplit::from_parts(
+        Zatoshis::ZERO,
+        Zatoshis::ZERO,
+        [0u8; 32],
+        [[0u8; 32], [1u8; 32]],
+        [[0u8; 32]; 2],
+        [0u8; 32],
+        [0u8; 32],
+        [[0u8; 32]; 2],
+        sprout::SproutProof::Groth([0u8; 192]),
+        [[0u8; NOTE_CIPHERTEXT_SIZE]; 2],
+    );
 
     // Create a usable signing key
     let signing_key = ed25519::SigningKey::new(rand::thread_rng());
     let verification_key = ed25519::VerificationKey::from(&signing_key);
 
-    // Populate join split data with the dummy join split.
-    let joinsplit_data = JoinSplitData {
-        first: joinsplit,
-        rest: vec![],
-        pub_key: verification_key.into(),
-        sig: [0u8; 64].into(),
+    let joinsplit_data = sprout::JoinSplitData {
+        joinsplits: vec![joinsplit],
+        joinsplit_pubkey: verification_key.into(),
+        joinsplit_sig: [0u8; 64],
     };
 
     (joinsplit_data, signing_key)
