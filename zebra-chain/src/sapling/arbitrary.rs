@@ -85,6 +85,18 @@ pub fn with_nullifier(spend: &Spend, nullifier: sapling_crypto::Nullifier) -> Sp
     )
 }
 
+/// `spend` anchored to `anchor` instead
+pub fn with_anchor(spend: &Spend, anchor: jubjub::Base) -> Spend {
+    Spend::from_parts(
+        spend.cv().clone(),
+        anchor,
+        *spend.nullifier(),
+        *spend.rk(),
+        *spend.zkproof(),
+        *spend.spend_auth_sig(),
+    )
+}
+
 /// nullifier, valid `rk`, proof, spend auth sig
 type SpendFields = ([u8; 32], [u8; 32], Vec<u8>, Vec<u8>);
 
