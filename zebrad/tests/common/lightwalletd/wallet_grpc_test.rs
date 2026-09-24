@@ -43,6 +43,7 @@ use zebra_chain::{
         NetworkUpgrade::{Nu5, Sapling},
     },
     serialization::ZcashDeserializeInto,
+    transaction::TransactionExt,
 };
 use zebra_consensus::funding_stream_address;
 use zebra_state::state_database_format_version_in_code;

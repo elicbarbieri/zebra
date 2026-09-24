@@ -31,6 +31,8 @@ use orchard::{
 };
 use zcash_protocol::value::ZatBalance;
 
+use crate::transaction::TransactionExt;
+
 /// Derives a canonically-encoded `pallas::Base` from a `seed`.
 ///
 /// Distinct seeds give distinct field elements, so callers can build actions with distinct

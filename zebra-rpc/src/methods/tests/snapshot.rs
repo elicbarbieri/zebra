@@ -36,7 +36,7 @@ use zebra_chain::{
     },
     serialization::{DateTime32, ZcashDeserializeInto},
     subtree::NoteCommitmentSubtreeData,
-    transaction::Transaction,
+    transaction::{Transaction, TransactionExt},
     work::difficulty::CompactDifficulty,
 };
 use zebra_consensus::Request;

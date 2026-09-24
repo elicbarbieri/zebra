@@ -1,6 +1,6 @@
 use color_eyre::eyre::{eyre, Result};
 
-use zebra_chain::parameters::Network::*;
+use zebra_chain::{parameters::Network::*, transaction::TransactionExt};
 use zebra_test::prelude::*;
 
 use crate::common::test_type::TestType::*;

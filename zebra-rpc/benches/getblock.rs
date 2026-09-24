@@ -46,6 +46,7 @@ use zebra_chain::{
     chain_sync_status::MockSyncStatus,
     chain_tip::mock::MockChainTip,
     parameters::Network::{self, *},
+    transaction::TransactionExt,
 };
 use zebra_network::address_book_peers::MockAddressBookPeers;
 use zebra_node_services::rpc_client::RpcRequestClient;

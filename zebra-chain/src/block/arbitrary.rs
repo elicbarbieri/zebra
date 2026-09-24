@@ -10,7 +10,7 @@ use crate::{
     parameters::{NetworkUpgrade::*, GENESIS_PREVIOUS_BLOCK_HASH},
     primitives::zcash_history::BlockCommitmentTreeRoots,
     serialization::{self, BytesInDisplayOrder},
-    transaction::arbitrary::MAX_ARBITRARY_ITEMS,
+    transaction::{arbitrary::MAX_ARBITRARY_ITEMS, TransactionExt},
     transparent::{
         new_transaction_ordered_outputs, CoinbaseSpendRestriction,
         MIN_TRANSPARENT_COINBASE_MATURITY,

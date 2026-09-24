@@ -32,7 +32,7 @@ use zebra_chain::{
     block::{self, Block},
     parameters::{Network, NetworkUpgrade},
     serialization::ZcashDeserializeInto,
-    transaction::{HashType, SigHash},
+    transaction::{HashType, SigHash, TransactionExt},
     transparent,
 };
 

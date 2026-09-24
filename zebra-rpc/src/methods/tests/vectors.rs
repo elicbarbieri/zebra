@@ -29,7 +29,7 @@ use zebra_chain::{
         NetworkKind,
     },
     serialization::{DateTime32, Duration32, ZcashDeserializeInto, ZcashSerialize},
-    transaction::{zip317, UnminedTxId, VerifiedUnminedTx},
+    transaction::{zip317, TransactionExt, UnminedTxId, VerifiedUnminedTx},
     work::difficulty::{CompactDifficulty, ExpandedDifficulty, U256},
 };
 use zebra_consensus::MAX_BLOCK_SIGOPS;

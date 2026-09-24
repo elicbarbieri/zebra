@@ -25,7 +25,7 @@ use zebra_chain::{
     },
     primitives::ed25519,
     serialization::ZcashSerialize,
-    transaction::{self, SerializedTransaction, Transaction, VerifiedUnminedTx},
+    transaction::{self, SerializedTransaction, Transaction, TransactionExt, VerifiedUnminedTx},
     transparent::Script,
 };
 use zebra_consensus::{error::TransactionError, funding_stream_address};

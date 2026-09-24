@@ -7,7 +7,7 @@ use zebra_chain::{
     block::{self, Height},
     orchard, sapling, sprout,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent,
     value_balance::ValueBalance,
 };

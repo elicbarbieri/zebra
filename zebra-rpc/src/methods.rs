@@ -75,7 +75,7 @@ use zebra_chain::{
         BytesInDisplayOrder, DateTime32, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize,
     },
     subtree::NoteCommitmentSubtreeIndex,
-    transaction::{self, SerializedTransaction, Transaction, UnminedTx},
+    transaction::{self, SerializedTransaction, Transaction, TransactionExt, UnminedTx},
     transparent::{self, Address, OutputIndex},
     value_balance::ValueBalance,
     work::{

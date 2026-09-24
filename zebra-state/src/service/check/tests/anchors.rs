@@ -8,7 +8,7 @@ use zebra_chain::{
     sapling,
     serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
     sprout,
-    transaction::{Transaction, UnminedTx},
+    transaction::{Transaction, TransactionExt, UnminedTx},
 };
 
 use crate::{

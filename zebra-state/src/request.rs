@@ -17,7 +17,7 @@ use zebra_chain::{
     parallel::tree::NoteCommitmentTrees,
     serialization::SerializationError,
     subtree::NoteCommitmentSubtreeIndex,
-    transaction::{self, UnminedTx},
+    transaction::{self, TransactionExt, UnminedTx},
     transparent::{self, utxos_from_ordered_utxos},
     value_balance::{ValueBalance, ValueBalanceError},
 };

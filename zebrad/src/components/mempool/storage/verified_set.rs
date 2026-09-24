@@ -9,7 +9,7 @@ use std::{
 use zebra_chain::{
     block::Height,
     ironwood, orchard, sapling, sprout,
-    transaction::{self, UnminedTx, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx},
     transparent,
 };
 use zebra_node_services::mempool::TransactionDependencies;

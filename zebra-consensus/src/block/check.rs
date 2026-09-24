@@ -17,7 +17,7 @@ use zebra_chain::{
         },
         Network, NetworkUpgrade,
     },
-    transaction::{self, Transaction},
+    transaction::{self, Transaction, TransactionExt},
     transparent::{Address, Output},
     work::{
         difficulty::{ExpandedDifficulty, ParameterDifficulty as _},

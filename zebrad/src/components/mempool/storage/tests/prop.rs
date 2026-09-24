@@ -13,7 +13,7 @@ use zebra_chain::{
     orchard,
     parameters::NetworkUpgrade,
     sapling, sprout,
-    transaction::{self, Transaction, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, Transaction, TransactionExt, UnminedTxId, VerifiedUnminedTx},
     transparent, LedgerState,
 };
 

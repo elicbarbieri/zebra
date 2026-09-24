@@ -16,7 +16,7 @@ use crate::{
     serialization::{
         sha256d, SerializationError, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize,
     },
-    transaction::{LockTime, Transaction},
+    transaction::{LockTime, Transaction, TransactionExt},
     transparent,
 };
 

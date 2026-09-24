@@ -15,7 +15,7 @@ use zebra_chain::{
     fmt::humantime_seconds,
     parameters::Network::{self, *},
     serialization::{DateTime32, ZcashDeserializeInto},
-    transaction::{UnminedTx, UnminedTxId, VerifiedUnminedTx},
+    transaction::{TransactionExt, UnminedTx, UnminedTxId, VerifiedUnminedTx},
 };
 use zebra_consensus::{
     error::TransactionError, router::RouterError, transaction, Config as ConsensusConfig,
