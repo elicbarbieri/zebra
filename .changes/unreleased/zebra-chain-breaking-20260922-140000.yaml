@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: 'The Orchard and Ironwood note commitment trees are built on `orchard::tree::MerkleHashOrchard` instead of Zebra''s own `orchard::tree::Node`, which is removed along with the vendored Sinsemilla hash and `EMPTY_ROOTS`. `NoteCommitmentUpdate` and `Block::{orchard,ironwood}_note_commitments` are now `orchard::note::ExtractedNoteCommitment`, and `orchard::tree::Root` gains `From<MerkleHashOrchard>`.'
+time: 2026-09-22T14:00:00.000000000Z

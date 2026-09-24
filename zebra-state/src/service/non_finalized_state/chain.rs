@@ -195,8 +195,10 @@ pub struct ChainInner {
     /// This extra root is removed when the first non-finalized block is committed.
     pub(crate) orchard_anchors_by_height: BTreeMap<block::Height, orchard::tree::Root>,
     /// A list of Orchard subtrees completed in the non-finalized state
-    pub(crate) orchard_subtrees:
-        BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>,
+    pub(crate) orchard_subtrees: BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    >,
 
     /// The Ironwood anchors created by `blocks` (NU6.3). Reuses the Orchard tree root type.
     ///
@@ -206,8 +208,10 @@ pub struct ChainInner {
     /// The Ironwood anchors created by each block in `blocks`.
     pub(crate) ironwood_anchors_by_height: BTreeMap<block::Height, orchard::tree::Root>,
     /// A list of Ironwood subtrees completed in the non-finalized state.
-    pub(crate) ironwood_subtrees:
-        BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>>,
+    pub(crate) ironwood_subtrees: BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    >,
 
     // Nullifiers
     //
@@ -991,7 +995,7 @@ impl Chain {
     pub fn orchard_subtree(
         &self,
         hash_or_height: HashOrHeight,
-    ) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         let height =
             hash_or_height.height_or_else(|hash| self.height_by_hash.get(&hash).cloned())?;
 
@@ -1012,7 +1016,10 @@ impl Chain {
     pub fn orchard_subtrees_in_range(
         &self,
         range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex>,
-    ) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>> {
+    ) -> BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    > {
         self.orchard_subtrees
             .range(range)
             .map(|(index, subtree)| (*index, *subtree))
@@ -1020,7 +1027,9 @@ impl Chain {
     }
 
     /// Returns the Orchard [`NoteCommitmentSubtree`] if it was completed at the tip height.
-    pub fn orchard_subtree_for_tip(&self) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    pub fn orchard_subtree_for_tip(
+        &self,
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         if !self.is_empty() {
             let tip = self.non_finalized_tip_height();
             self.orchard_subtree(tip.into())
@@ -1247,7 +1256,7 @@ impl Chain {
     pub fn ironwood_subtree(
         &self,
         hash_or_height: HashOrHeight,
-    ) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         let height =
             hash_or_height.height_or_else(|hash| self.height_by_hash.get(&hash).cloned())?;
 
@@ -1261,7 +1270,10 @@ impl Chain {
     pub fn ironwood_subtrees_in_range(
         &self,
         range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex>,
-    ) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>> {
+    ) -> BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    > {
         self.ironwood_subtrees
             .range(range)
             .map(|(index, subtree)| (*index, *subtree))
@@ -1269,7 +1281,9 @@ impl Chain {
     }
 
     /// Returns the Ironwood [`NoteCommitmentSubtree`] if it was completed at the tip height.
-    pub fn ironwood_subtree_for_tip(&self) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    pub fn ironwood_subtree_for_tip(
+        &self,
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         if !self.is_empty() {
             let tip = self.non_finalized_tip_height();
             self.ironwood_subtree(tip.into())
@@ -2448,7 +2462,7 @@ impl Chain {
     /// Inserts the supplied Orchard note commitment subtree into the chain.
     pub(crate) fn insert_orchard_subtree(
         &mut self,
-        subtree: NoteCommitmentSubtree<orchard::tree::Node>,
+        subtree: NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>,
     ) {
         self.inner
             .orchard_subtrees

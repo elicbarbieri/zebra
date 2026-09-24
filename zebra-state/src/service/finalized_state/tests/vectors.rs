@@ -7,12 +7,10 @@
 use hex::FromHex;
 use rand::random;
 
-use halo2::pasta::{group::ff::PrimeField, pallas};
-
 use zebra_chain::{
     block::Height,
     orchard::{
-        self, tree::legacy::LegacyNoteCommitmentTree as LegacyOrchardNoteCommitmentTree,
+        tree::legacy::LegacyNoteCommitmentTree as LegacyOrchardNoteCommitmentTree,
         tree::NoteCommitmentTree as OrchardNoteCommitmentTree,
     },
     sapling::{
@@ -302,7 +300,7 @@ fn orchard_note_commitment_tree_serialization() {
     ];
 
     for (idx, cm_x_bytes) in commitments.iter().enumerate() {
-        let cm_x = pallas::Base::from_repr(*cm_x_bytes).unwrap();
+        let cm_x = ::orchard::note::ExtractedNoteCommitment::from_bytes(cm_x_bytes).unwrap();
         incremental_tree.append(cm_x).unwrap();
         if random() {
             info!(?idx, "randomly caching root for note commitment tree index");
@@ -343,7 +341,7 @@ fn orchard_note_commitment_tree_serialization_one() {
     ]];
 
     for (idx, cm_x_bytes) in commitments.iter().enumerate() {
-        let cm_x = pallas::Base::from_repr(*cm_x_bytes).unwrap();
+        let cm_x = ::orchard::note::ExtractedNoteCommitment::from_bytes(cm_x_bytes).unwrap();
         incremental_tree.append(cm_x).unwrap();
         if random() {
             info!(?idx, "randomly caching root for note commitment tree index");
@@ -395,7 +393,7 @@ fn orchard_note_commitment_tree_serialization_pow2() {
     ];
 
     for (idx, cm_x_bytes) in commitments.iter().enumerate() {
-        let cm_x = pallas::Base::from_repr(*cm_x_bytes).unwrap();
+        let cm_x = ::orchard::note::ExtractedNoteCommitment::from_bytes(cm_x_bytes).unwrap();
         incremental_tree.append(cm_x).unwrap();
         if random() {
             info!(?idx, "randomly caching root for note commitment tree index");
@@ -604,7 +602,8 @@ fn orchard_checks(
 
     let subtree = NoteCommitmentSubtreeData::new(
         Height(100000),
-        orchard::tree::Node::from_bytes(incremental_tree.hash()),
+        ::orchard::tree::MerkleHashOrchard::from_bytes(&incremental_tree.hash())
+            .expect("tree root is canonical"),
     );
 
     let serialized_subtree = subtree.as_bytes();
@@ -615,7 +614,9 @@ fn orchard_checks(
     );
 
     let deserialized_subtree =
-        NoteCommitmentSubtreeData::<orchard::tree::Node>::from_bytes(&serialized_subtree);
+        NoteCommitmentSubtreeData::<::orchard::tree::MerkleHashOrchard>::from_bytes(
+            &serialized_subtree,
+        );
 
     assert_eq!(
         subtree, deserialized_subtree,

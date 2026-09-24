@@ -3,7 +3,6 @@
 #![warn(missing_docs)]
 
 mod note;
-mod sinsemilla;
 
 #[cfg(any(test, feature = "proptest-impl"))]
 pub mod arbitrary;

@@ -2,8 +2,6 @@
 
 use std::{collections::HashMap, fmt, ops::Neg, sync::Arc};
 
-use halo2::pasta::{group::ff::PrimeField, pallas};
-
 use crate::{
     amount::{DeferredPoolBalanceChange, NegativeAllowed},
     block::merkle::AuthDataRoot,
@@ -189,34 +187,22 @@ impl Block {
             .flat_map(|transaction| transaction.sapling_note_commitments().collect::<Vec<_>>())
     }
 
-    /// Access the orchard note commitments from all transactions in this block,
-    /// as `pallas::Base` values for the note commitment tree.
-    pub fn orchard_note_commitments(&self) -> impl Iterator<Item = pallas::Base> + '_ {
-        self.transactions.iter().flat_map(|transaction| {
-            transaction
-                .orchard_note_commitments()
-                .map(|cmx| {
-                    let bytes = cmx.to_bytes();
-                    pallas::Base::from_repr(bytes)
-                        .expect("orchard note commitment is a valid pallas::Base")
-                })
-                .collect::<Vec<_>>()
-        })
+    /// Access the orchard note commitments from all transactions in this block.
+    pub fn orchard_note_commitments(
+        &self,
+    ) -> impl Iterator<Item = ::orchard::note::ExtractedNoteCommitment> + '_ {
+        self.transactions
+            .iter()
+            .flat_map(|transaction| transaction.orchard_note_commitments().collect::<Vec<_>>())
     }
 
-    /// Access the ironwood note commitments from all transactions in this block,
-    /// as `pallas::Base` values for the note commitment tree.
-    pub fn ironwood_note_commitments(&self) -> impl Iterator<Item = pallas::Base> + '_ {
-        self.transactions.iter().flat_map(|transaction| {
-            transaction
-                .ironwood_note_commitments()
-                .map(|cmx| {
-                    let bytes = cmx.to_bytes();
-                    pallas::Base::from_repr(bytes)
-                        .expect("ironwood note commitment is a valid pallas::Base")
-                })
-                .collect::<Vec<_>>()
-        })
+    /// Access the ironwood note commitments from all transactions in this block.
+    pub fn ironwood_note_commitments(
+        &self,
+    ) -> impl Iterator<Item = ::orchard::note::ExtractedNoteCommitment> + '_ {
+        self.transactions
+            .iter()
+            .flat_map(|transaction| transaction.ironwood_note_commitments().collect::<Vec<_>>())
     }
 
     /// Count how many Sapling transactions exist in a block,

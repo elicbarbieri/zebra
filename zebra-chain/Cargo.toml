@@ -53,7 +53,6 @@ bench = ["zebra-test"]
 [dependencies]
 lazy_static = { workspace = true }
 tempfile = { workspace = true }
-bitvec = { workspace = true }
 bitflags = { workspace = true }
 blake2b_simd = { workspace = true }
 bs58 = { workspace = true, features = ["check"] }
@@ -88,7 +87,6 @@ sapling-crypto.workspace = true
 zcash_protocol.workspace = true
 zcash_address.workspace = true
 zcash_transparent = { workspace = true }
-sinsemilla = { workspace = true }
 
 # Time
 chrono = { workspace = true, features = ["clock", "std", "serde"] }

@@ -412,19 +412,25 @@ impl ZebraDb {
         &self,
         cf: &str,
         range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex>,
-    ) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>> {
+    ) -> BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    > {
         let subtrees = self.db.cf_handle(cf).unwrap();
         self.db.zs_forward_range_iter(&subtrees, range).collect()
     }
 
     /// Returns the note commitment subtree in `cf` that is finalizing in the tip, or `None`.
     #[allow(clippy::unwrap_in_result)]
-    fn subtree_for_tip(&self, cf: &str) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    fn subtree_for_tip(
+        &self,
+        cf: &str,
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         let subtrees = self.db.cf_handle(cf).unwrap();
 
         let (index, subtree_data): (
             NoteCommitmentSubtreeIndex,
-            NoteCommitmentSubtreeData<orchard::tree::Node>,
+            NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
         ) = self.db.zs_last_key_value(&subtrees)?;
 
         let tip_height = self.finalized_tip_height()?;
@@ -469,13 +475,13 @@ impl ZebraDb {
     pub(in super::super) fn orchard_subtree_by_index(
         &self,
         index: impl Into<NoteCommitmentSubtreeIndex> + Copy,
-    ) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         let orchard_subtrees = self
             .db
             .cf_handle("orchard_note_commitment_subtree")
             .unwrap();
 
-        let subtree_data: NoteCommitmentSubtreeData<orchard::tree::Node> =
+        let subtree_data: NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard> =
             self.db.zs_get(&orchard_subtrees, &index.into())?;
 
         Some(subtree_data.with_index(index))
@@ -485,12 +491,17 @@ impl ZebraDb {
     pub fn orchard_subtree_list_by_index_range(
         &self,
         range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex>,
-    ) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>> {
+    ) -> BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    > {
         self.subtree_list_by_index_range("orchard_note_commitment_subtree", range)
     }
 
     /// Get the orchard note commitment subtress for the finalized tip.
-    fn orchard_subtree_for_tip(&self) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    fn orchard_subtree_for_tip(
+        &self,
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         self.subtree_for_tip("orchard_note_commitment_subtree")
     }
 
@@ -569,12 +580,17 @@ impl ZebraDb {
     pub fn ironwood_subtree_list_by_index_range(
         &self,
         range: impl std::ops::RangeBounds<NoteCommitmentSubtreeIndex>,
-    ) -> BTreeMap<NoteCommitmentSubtreeIndex, NoteCommitmentSubtreeData<orchard::tree::Node>> {
+    ) -> BTreeMap<
+        NoteCommitmentSubtreeIndex,
+        NoteCommitmentSubtreeData<::orchard::tree::MerkleHashOrchard>,
+    > {
         self.subtree_list_by_index_range("ironwood_note_commitment_subtree", range)
     }
 
     /// Get the Ironwood note commitment subtree for the finalized tip.
-    fn ironwood_subtree_for_tip(&self) -> Option<NoteCommitmentSubtree<orchard::tree::Node>> {
+    fn ironwood_subtree_for_tip(
+        &self,
+    ) -> Option<NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>> {
         self.subtree_for_tip("ironwood_note_commitment_subtree")
     }
 
@@ -872,7 +888,7 @@ impl DiskWriteBatch {
     pub fn insert_orchard_subtree(
         &mut self,
         zebra_db: &ZebraDb,
-        subtree: &NoteCommitmentSubtree<orchard::tree::Node>,
+        subtree: &NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>,
     ) {
         self.insert_note_commitment_subtree(zebra_db, "orchard_note_commitment_subtree", subtree);
     }
@@ -900,7 +916,7 @@ impl DiskWriteBatch {
     pub fn insert_ironwood_subtree(
         &mut self,
         zebra_db: &ZebraDb,
-        subtree: &NoteCommitmentSubtree<orchard::tree::Node>,
+        subtree: &NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>,
     ) {
         self.insert_note_commitment_subtree(zebra_db, "ironwood_note_commitment_subtree", subtree);
     }
@@ -929,7 +945,7 @@ impl DiskWriteBatch {
         &mut self,
         zebra_db: &ZebraDb,
         subtree_cf: &str,
-        subtree: &NoteCommitmentSubtree<orchard::tree::Node>,
+        subtree: &NoteCommitmentSubtree<::orchard::tree::MerkleHashOrchard>,
     ) {
         let subtree_cf = zebra_db.db.cf_handle(subtree_cf).unwrap();
         self.zs_insert(&subtree_cf, subtree.index, subtree.into_data());
