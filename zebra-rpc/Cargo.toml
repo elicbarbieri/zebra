@@ -85,6 +85,7 @@ tracing = { workspace = true }
 metrics = { workspace = true }
 
 hex = { workspace = true, features = ["serde"] }
+const-hex = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["serde_derive"] }
 
 # For the `stop` RPC method.
