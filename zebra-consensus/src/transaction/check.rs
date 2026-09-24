@@ -491,7 +491,9 @@ pub fn coinbase_outputs_are_decryptable(
         return Err(TransactionError::NotCoinbase);
     }
 
-    if !zcash_note_encryption::decrypts_successfully(transaction, network, height) {
+    // Bad point = `InvalidPointEncoding`, not undecryptable (same error the tx verifier gives)
+    // - Coinbase decompressed again by the tx verifier (one tx per block)
+    if !zcash_note_encryption::decrypts_successfully(transaction, network, height)? {
         return Err(TransactionError::CoinbaseOutputsNotDecryptable);
     }
 

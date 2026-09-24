@@ -307,6 +307,11 @@ where
             // Do quick checks first
             check_common_consensus_rules(tx.as_ref(), height, &network)?;
 
+            // Point rules (deferred from parse), before any state lookup or policy check
+            // - Only structural checks run first (eager parse ran it before those)
+            // - Reused by `CachedFfiTransaction` (one decompression per verification)
+            let decompressed = tx.decompress()?;
+
             tracing::trace!(?tx_id, "passed quick checks");
 
             // Block transactions are checked against the block's own time directly.
@@ -328,7 +333,7 @@ where
                 Self::block_spent_utxos(tx.clone(), known_utxos, state.clone()).await?;
 
             let cached_ffi_transaction =
-                Arc::new(CachedFfiTransaction::new(tx.clone(), Arc::new(spent_outputs), nu).map_err(|_| TransactionError::UnsupportedByNetworkUpgrade(tx.version(), nu))?);
+                Arc::new(CachedFfiTransaction::from_decompressed(tx.clone(), decompressed, Arc::new(spent_outputs), nu).map_err(|_| TransactionError::UnsupportedByNetworkUpgrade(tx.version(), nu))?);
 
             tracing::trace!(?tx_id, "got state UTXOs");
 
@@ -499,6 +504,11 @@ where
             // Do quick checks first
             check_common_consensus_rules(tx.as_ref(), height, &network)?;
 
+            // Point rules (deferred from parse), before any state lookup or policy check
+            // - Only structural checks run first (eager parse ran it before those)
+            // - Reused by `CachedFfiTransaction` (one decompression per verification)
+            let decompressed = tx.decompress()?;
+
             tracing::trace!(?tx_id, "passed quick checks");
 
             // Mempool transactions are checked against the next median-time-past from state.
@@ -535,7 +545,7 @@ where
             transaction::zip317::mempool_checks(unpaid_actions, miner_fee, unmined_tx.size)?;
 
             let cached_ffi_transaction =
-                Arc::new(CachedFfiTransaction::new(tx.clone(), Arc::new(spent_outputs), nu).map_err(|_| TransactionError::UnsupportedByNetworkUpgrade(tx.version(), nu))?);
+                Arc::new(CachedFfiTransaction::from_decompressed(tx.clone(), decompressed, Arc::new(spent_outputs), nu).map_err(|_| TransactionError::UnsupportedByNetworkUpgrade(tx.version(), nu))?);
 
             tracing::trace!(?tx_id, "got state UTXOs");
 

@@ -987,7 +987,7 @@ pub fn transaction_to_fake_v5(
             // For V4, carry over the sapling bundle (already in zcash_primitives format)
             let sapling_bundle = trans.0.sapling_bundle().cloned();
 
-            let tx_data = zp_tx::TransactionData::from_parts(
+            let tx_data = zp_tx::CompressedTransactionData::from_parts(
                 TxVersion::V5,
                 branch_id,
                 lock_time_u32,
