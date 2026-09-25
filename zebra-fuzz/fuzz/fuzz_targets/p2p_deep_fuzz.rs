@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use tokio_util::codec::{Decoder, Encoder};
 use zebra_chain::parameters::Network;
 use zebra_chain::serialization::sha256d;
+use zebra_chain::transaction::TransactionExt;
 use zebra_network::protocol::external::{Codec, Message};
 
 /// Cached default testnet.
@@ -245,7 +246,7 @@ fuzz_target!(|data: &[u8]| {
                 }
                 Message::Tx(unmined_tx) => {
                     // Deep fuzz the transaction
-                    deep_fuzz_transaction(&unmined_tx.transaction);
+                    deep_fuzz_transaction(unmined_tx.transaction.as_ref());
                 }
                 Message::FilterLoad {
                     filter,
@@ -658,7 +659,7 @@ fn inv_hash_to_32(h: &zebra_network::protocol::external::InventoryHash) -> Optio
 
 /// Deep fuzz a transaction — exercises property extraction, consensus checks, and ZIP-317.
 /// Mirrors the per-transaction deep-fuzz logic.
-fn deep_fuzz_transaction(tx: &zebra_chain::transaction::Transaction) {
+fn deep_fuzz_transaction(tx: &impl TransactionExt) {
     use std::panic;
     use zebra_chain::block::Height;
     use zebra_chain::parameters::Network;

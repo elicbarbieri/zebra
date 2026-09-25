@@ -26,7 +26,7 @@
 //!   `serialize` over every field — the Ironwood shielded data included — not
 //!   merely reproduce the same bytes by coincidence.
 //!
-//! The entry point is version-agnostic — `Transaction::zcash_deserialize`
+//! The entry point is version-agnostic — `CompressedTransaction::zcash_deserialize`
 //! dispatches on the version header — and the target is focused on the
 //! v6/Ironwood surface through its seed corpus (real Ironwood transactions from
 //! the activated testnet, plus structural mutation). Non-v6 inputs still
@@ -37,14 +37,14 @@
 use libfuzzer_sys::fuzz_target;
 use std::io::Cursor;
 use zebra_chain::serialization::{ZcashDeserialize, ZcashSerialize};
-use zebra_chain::transaction::Transaction;
+use zebra_chain::transaction::CompressedTransaction;
 
 fuzz_target!(|data: &[u8]| {
     // Parse failure is the expected outcome for the vast majority of
     // fuzzer-generated inputs; only a successful decode carries an invariant to
     // assert. Decoding must never panic on any input, well-formed or not — a
     // panic here would let a peer crash a node with a crafted transaction.
-    let tx = match Transaction::zcash_deserialize(Cursor::new(data)) {
+    let tx = match CompressedTransaction::zcash_deserialize(Cursor::new(data)) {
         Ok(tx) => tx,
         Err(_) => return,
     };
@@ -63,7 +63,7 @@ fuzz_target!(|data: &[u8]| {
     // emitted bytes that its own deserializer rejects. Skipping it — as an
     // `if let Ok(..)` would — discards both assertions below in precisely the
     // case they exist to catch.
-    let tx2 = Transaction::zcash_deserialize(Cursor::new(&serialized)).expect(
+    let tx2 = CompressedTransaction::zcash_deserialize(Cursor::new(&serialized)).expect(
         "round-trip decode failure — serialize emitted bytes its own deserializer rejects",
     );
 
@@ -81,4 +81,16 @@ fuzz_target!(|data: &[u8]| {
         tx, tx2,
         "round-trip structural mismatch — deserialize is not the inverse of serialize"
     );
+
+    // Point rules (lazy: here, not at parse)
+    // - accepted points = canonical → decompressed tx re-encodes byte-for-byte
+    if let Ok(decompressed) = tx.decompress() {
+        assert_eq!(
+            decompressed.zcash_serialize_to_vec().expect(
+                "ZcashSerialize is infallible except for writer errors, and a Vec writer cannot fail",
+            ),
+            serialized,
+            "decompress changed the encoding — accepted a non-canonical point"
+        );
+    }
 });

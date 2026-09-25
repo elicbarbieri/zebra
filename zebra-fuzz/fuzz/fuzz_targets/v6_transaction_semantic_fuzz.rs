@@ -12,8 +12,8 @@
 //! successfully-parsed transaction — a panic would let a peer abort a node with
 //! a crafted-but-well-formed v6 transaction.
 //!
-//! Scope and safety. Every method called here is a pure `&Transaction` /
-//! `&ShieldedData` function or a synchronous `fn(&Transaction) -> Result`
+//! Scope and safety. Every method called here is a pure `&CompressedTransaction` /
+//! `&ShieldedData` function or a synchronous `fn(&CompressedTransaction) -> Result`
 //! consensus check — no async, no proof verification, no FFI. It computes **no
 //! transaction id / auth digest**: the txid builder's librustzcash-compat
 //! `.expect()` is never on this path (and, per the v6 deserializer's own
@@ -30,13 +30,13 @@ use libfuzzer_sys::fuzz_target;
 use std::io::Cursor;
 use zebra_chain::parameters::NetworkUpgrade;
 use zebra_chain::serialization::ZcashDeserialize;
-use zebra_chain::transaction::Transaction;
+use zebra_chain::transaction::{CompressedTransaction, TransactionExt};
 use zebra_consensus::transaction::check;
 
 fuzz_target!(|data: &[u8]| {
     // Only a successful decode carries invariants to assert; parse failure is the
     // expected outcome for most fuzzer inputs. Decoding must never panic.
-    let tx = match Transaction::zcash_deserialize(Cursor::new(data)) {
+    let tx = match CompressedTransaction::zcash_deserialize(Cursor::new(data)) {
         Ok(tx) => tx,
         Err(_) => return,
     };

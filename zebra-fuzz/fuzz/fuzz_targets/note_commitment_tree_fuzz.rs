@@ -55,12 +55,12 @@ enum TreeOp {
     ///
     /// For Sapling this round-trips through `ExtractedNoteCommitment::from_bytes`,
     /// which can return `None` for non-canonical encodings; we skip those.
-    /// For Orchard this round-trips through `pallas::Base::from_repr`, which
+    /// For Orchard this round-trips through Orchard's `ExtractedNoteCommitment::from_bytes`, which
     /// can also reject non-canonical bytes; we skip those.
     /// For Sprout `NoteCommitment` is a transparent `[u8; 32]` so every input
     /// is valid.
     Append([u8; 32]),
-    /// Parse a tree `Root` (and Orchard `Node`) from attacker-controlled 32
+    /// Parse a tree `Root` (and Orchard `MerkleHashOrchard`) from attacker-controlled 32
     /// bytes. This is the network/consensus-facing canonical-encoding check
     /// — Sapling `jubjub::Base::from_bytes`, Orchard `pallas::Base::from_repr`
     /// — that block-supplied anchors/roots flow through on deserialization.
@@ -205,16 +205,17 @@ fn run_sapling(ops: &[TreeOp]) {
 // ─────────────────────────────────────────────────────────────────────
 
 fn run_orchard(ops: &[TreeOp]) {
-    use halo2::pasta::{group::ff::PrimeField, pallas};
+    use orchard::{note::ExtractedNoteCommitment, tree::MerkleHashOrchard};
 
     let mut tree = orchard_tree::NoteCommitmentTree::default();
 
     for op in ops {
         match op {
             TreeOp::Append(bytes) => {
-                // pallas::Base::from_repr is a CtOption — non-canonical
+                // ExtractedNoteCommitment::from_bytes is a CtOption — non-canonical
                 // encodings legitimately return None, skip them.
-                let cm_opt: Option<pallas::Base> = pallas::Base::from_repr(*bytes).into();
+                let cm_opt: Option<ExtractedNoteCommitment> =
+                    ExtractedNoteCommitment::from_bytes(bytes).into();
                 let Some(cm) = cm_opt else { continue };
 
                 let append_res = panic::catch_unwind(panic::AssertUnwindSafe(|| tree.append(cm)));
@@ -239,9 +240,8 @@ fn run_orchard(ops: &[TreeOp]) {
             }
             TreeOp::ParseRoot(bytes) => {
                 // Canonical-encoding validation of an Orchard root (and the
-                // Orchard `Node` type, which shares the Pallas field-element
-                // check) from raw bytes. The slice-based `Node::try_from` also
-                // drives the wrong-length error branch.
+                // upstream `MerkleHashOrchard` node, which shares the Pallas
+                // field-element check) from raw bytes.
                 let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
                     orchard_tree::Root::try_from(*bytes)
                 }));
@@ -249,10 +249,7 @@ fn run_orchard(ops: &[TreeOp]) {
                     orchard_tree::Root::zcash_deserialize(&bytes[..])
                 }));
                 let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                    orchard_tree::Node::try_from(*bytes)
-                }));
-                let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                    orchard_tree::Node::try_from(&bytes[..])
+                    Option::<MerkleHashOrchard>::from(MerkleHashOrchard::from_bytes(bytes))
                 }));
             }
             TreeOp::MarkAtPosition => {

@@ -58,6 +58,8 @@ tokio-util = { version = "0.7.14", features = ["codec"] }
 # generate_v6_seeds bundle types
 orchard = "0.16.0"
 zcash_protocol = "=0.11.0-pre.0"
+# script_verify_fuzz: decompressed (point-checked) transaction tier
+zcash_primitives = "=0.31.0-pre.1"
 
 [[bin]]
 name = "rpc_handler_fuzz"
@@ -149,3 +151,17 @@ doc = false
 name = "generate_v6_seeds"
 path = "seed_gen.rs"
 doc = false
+
+# Same as the root workspace's (not inherited: separate cargo workspace)
+[patch.crates-io]
+incrementalmerkletree = { git = "https://github.com/elicbarbieri/incrementalmerkletree.git", rev = "d5e07689456e0be0154934aa39d347a9e5f18765" }
+orchard = { git = "https://github.com/elicbarbieri/orchard.git", rev = "b1d5b69cddbb205edc419a79ec3fa4c6a9c14a6d" }
+sapling-crypto = { git = "https://github.com/elicbarbieri/sapling-crypto.git", rev = "3c14da616116271fdf48ec032bbf31195e5f6c7f" }
+zcash_primitives = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+zcash_proofs = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+zcash_protocol = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+zcash_transparent = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+zcash_address = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+zcash_keys = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+zcash_encoding = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
+equihash = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "631e26d9c539aa9f0b9dcc54882c5cab0cb98349" }
