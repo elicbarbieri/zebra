@@ -10,7 +10,7 @@ use zebra_chain::amount::DeferredPoolBalanceChange;
 use zebra_chain::block::{merkle, Block, Height, MAX_BLOCK_BYTES};
 use zebra_chain::parameters::Network;
 use zebra_chain::serialization::{ZcashDeserialize, ZcashSerialize};
-use zebra_chain::transaction::Transaction;
+use zebra_chain::transaction::{CompressedTransaction, TransactionExt};
 use zebra_chain::transparent;
 
 /// Cached default testnet.
@@ -648,7 +648,7 @@ fuzz_target!(|data: &[u8]| {
 
 /// Deep fuzz a transaction — exercises property extraction, consensus checks, and ZIP-317.
 /// Mirrors the per-transaction deep-fuzz logic.
-fn deep_fuzz_transaction(tx: &Transaction) {
+fn deep_fuzz_transaction(tx: &CompressedTransaction) {
     use std::panic;
 
     // --- Property Extraction ---
