@@ -1,0 +1,4 @@
+project: zebra-network
+kind: breaking
+body: '`init_with_block_gossip_peer_ips` takes a `max_checkpoint_height`: received blocks at or below it skip the codec point checks, `None` checks every block. Added `Codec` and `Handshake` builder methods `with_max_checkpoint_height`.'
+time: 2026-09-24T23:00:00.000000000Z

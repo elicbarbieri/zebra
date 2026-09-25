@@ -9,6 +9,7 @@ use std::{
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use bytes::{BufMut, BytesMut};
 use chrono::{TimeZone, Utc};
+use rayon::prelude::*;
 use tokio_util::codec::{Decoder, Encoder};
 
 use zebra_chain::{
@@ -62,6 +63,8 @@ pub struct Builder {
     max_len: usize,
     /// An optional address label, to use for reporting metrics.
     metrics_addr_label: Option<String>,
+    /// Point rules skipped for blocks at or below (pinned by checkpoint hash), `None` = check all
+    max_checkpoint_height: Option<block::Height>,
 }
 
 impl Codec {
@@ -72,6 +75,7 @@ impl Codec {
             version: constants::CURRENT_NETWORK_PROTOCOL_VERSION,
             max_len: MAX_HANDSHAKE_BODY_LEN,
             metrics_addr_label: None,
+            max_checkpoint_height: None,
         }
     }
 
@@ -121,6 +125,12 @@ impl Builder {
     /// Configure the codec with a label corresponding to the peer address.
     pub fn with_metrics_addr_label(mut self, metrics_addr_label: String) -> Self {
         self.metrics_addr_label = Some(metrics_addr_label);
+        self
+    }
+
+    /// Configure the codec to skip point rules for `block`s at or below `height`.
+    pub fn with_max_checkpoint_height(mut self, height: Option<block::Height>) -> Self {
+        self.max_checkpoint_height = height;
         self
     }
 }
@@ -671,7 +681,7 @@ impl Codec {
     }
 
     fn read_block<R: Read + std::marker::Send>(&self, reader: R) -> Result<Message, Error> {
-        let result = Self::deserialize_block_spawning(reader);
+        let result = Self::deserialize_block_spawning(reader, self.builder.max_checkpoint_height);
         Ok(Message::Block(result?.into()))
     }
 
@@ -822,8 +832,14 @@ impl Codec {
     }
 
     /// Given the reader, deserialize the block in the rayon thread pool.
+    ///
+    /// - Point rules checked above `max_checkpoint_height` (bad point = codec error = disconnect)
+    /// - Block stays compressed (verifier decompresses again)
     #[allow(clippy::unwrap_in_result)]
-    fn deserialize_block_spawning<R: Read + std::marker::Send>(reader: R) -> Result<Block, Error> {
+    fn deserialize_block_spawning<R: Read + std::marker::Send>(
+        reader: R,
+        max_checkpoint_height: Option<block::Height>,
+    ) -> Result<Block, Error> {
         let mut result = None;
 
         // Correctness: Do CPU-intensive work on a dedicated thread, to avoid blocking other futures.
@@ -836,10 +852,39 @@ impl Codec {
         // - There is no way to check the blocking task's future for panics
         tokio::task::block_in_place(|| {
             rayon::in_place_scope_fifo(|s| {
-                s.spawn_fifo(|_s| result = Some(Block::zcash_deserialize(reader)))
+                s.spawn_fifo(|_s| {
+                    result = Some(Block::zcash_deserialize(reader).and_then(|block| {
+                        check_block_points(&block, max_checkpoint_height)?;
+                        Ok(block)
+                    }))
+                })
             })
         });
 
         result.expect("scope has already finished")
     }
+}
+
+/// Point rules for `block`, unless pinned by a checkpoint hash
+///
+/// - Every point in the txid (ZIP 244 effecting data, v4 whole tx) → pinned by block hash
+/// - No coinbase height = checked (router sends it to the semantic verifier)
+fn check_block_points(
+    block: &Block,
+    max_checkpoint_height: Option<block::Height>,
+) -> Result<(), Error> {
+    let checkpointed = block
+        .coinbase_height()
+        .zip(max_checkpoint_height)
+        .is_some_and(|(height, max)| height <= max);
+    if checkpointed {
+        return Ok(());
+    }
+
+    block.transactions.par_iter().try_for_each(|tx| {
+        CompressedTransaction::clone(tx)
+            .decompress()
+            .map(drop)
+            .map_err(|error| zebra_chain::Error::from(error).into())
+    })
 }

@@ -391,6 +391,7 @@ impl StartCmd {
                 latest_chain_tip.clone(),
                 user_agent(),
                 zcashd_compat_block_gossip_peer_ips,
+                Some(max_checkpoint_height),
             )
             .await;
 
