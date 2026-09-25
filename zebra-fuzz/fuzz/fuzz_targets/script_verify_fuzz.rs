@@ -72,7 +72,7 @@
 //! ```text
 //!   [ tx_bytes ............................. | script_bytes ... | nu_sel | idx_sel ]
 //!   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//!   variable-length head (Transaction::zcash_deserialize)
+//!   variable-length head (CompressedTransaction::zcash_deserialize)
 //!                                              ^^^^^^^^^^^^^^^^^^^^
 //!                                              variable-length middle
 //!                                              (lock_script bytes)
@@ -125,7 +125,8 @@ use std::sync::Arc;
 
 use zebra_chain::parameters::NetworkUpgrade;
 use zebra_chain::serialization::ZcashDeserialize;
-use zebra_chain::transaction::Transaction;
+use zcash_primitives::transaction::Transaction;
+use zebra_chain::transaction::TransactionExt;
 use zebra_chain::transparent;
 use zebra_script::CachedFfiTransaction;
 
@@ -178,7 +179,7 @@ fuzz_target!(|data: &[u8]| {
     let script_bytes = &head[split_at..];
 
     // ───────────────────────────────────────────────────────────────────
-    // Layer 1: Transaction::zcash_deserialize gate.
+    // Layer 1: Transaction::zcash_deserialize gate (parse + point rules).
     //
     // We only proceed for structurally-valid Zebra transactions —
     // deserializer panics here are already covered by

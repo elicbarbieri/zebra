@@ -32,6 +32,7 @@ use std::sync::Arc;
 use zebra_chain::block::{Block, Hash, Height, ZCASH_BLOCK_VERSION, MAX_BLOCK_BYTES};
 use zebra_chain::block::merkle::Root as MerkleRoot;
 use zebra_chain::serialization::{ZcashDeserialize, ZcashSerialize};
+use zebra_chain::transaction::TransactionExt;
 
 fuzz_target!(|data: &[u8]| {
     // ────────────────────────────────────────────────────────────────────
