@@ -22,14 +22,17 @@ use zcash_protocol::value::ZatBalance;
 use zebra_chain::parameters::NetworkUpgrade;
 use zebra_chain::serialization::{ZcashDeserialize, ZcashSerialize};
 use zebra_chain::transaction::arbitrary::{fake_orchard_bundle, fake_v6_transaction};
-use zebra_chain::transaction::Transaction;
+use zcash_primitives::transaction::Transaction;
+use zebra_chain::transaction::CompressedTransaction;
 
 /// The v6 Orchard-shaped bundle type carried in both the Orchard and Ironwood slots.
 type V6Bundle = Bundle<Authorized, ZatBalance>;
 
 /// Emit `tx` as a seed file iff it round-trips through the wire deserializer, so
 /// every seed is a valid decode that reaches the deep v6 code (not a reject).
-fn emit(tx: &Transaction, tag: &str, out_dir: &str, written: &mut usize, skipped: &mut usize) {
+///
+/// - Gate = checked tier (parse + point rules, as a node accepts it)
+fn emit(tx: &CompressedTransaction, tag: &str, out_dir: &str, written: &mut usize, skipped: &mut usize) {
     match tx.zcash_serialize_to_vec() {
         Ok(bytes) if Transaction::zcash_deserialize(Cursor::new(&bytes)).is_ok() => {
             let path = format!("{}/v6_{}_{:05}.bin", out_dir, tag, *written);
