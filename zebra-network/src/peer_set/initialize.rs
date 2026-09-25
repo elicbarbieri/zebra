@@ -25,6 +25,7 @@ use tower::{discover::Change, layer::Layer, Service, ServiceExt};
 use tracing_futures::Instrument;
 
 use zebra_chain::{
+    block,
     chain_tip::ChainTip,
     diagnostic::task::{CheckForPanics, WaitForPanics},
     parameters::Network,
@@ -134,6 +135,7 @@ where
         latest_chain_tip,
         user_agent,
         Vec::new(),
+        None,
     )
     .await
 }
@@ -145,12 +147,16 @@ where
 /// inventory broadcasts, and one inbound connection slot is reserved for them.
 /// This is used by zcashd-compat mode, where a zcashd wallet sidecar makes a
 /// single P2P connection to this node and must reliably learn about new blocks.
+///
+/// - Blocks at or below `max_checkpoint_height` skip codec point rules (pinned by checkpoint hash)
+/// - `None` = every block checked, like [`init`]
 pub async fn init_with_block_gossip_peer_ips<S, C>(
     config: Config,
     inbound_service: S,
     latest_chain_tip: C,
     user_agent: String,
     block_gossip_peer_ips: Vec<IpAddr>,
+    max_checkpoint_height: Option<block::Height>,
 ) -> (
     NetworkService,
     Arc<std::sync::Mutex<AddressBook>>,
@@ -251,6 +257,7 @@ where
             .with_advertised_services(PeerServices::NODE_NETWORK)
             .with_user_agent(user_agent)
             .with_latest_chain_tip(latest_chain_tip.clone())
+            .with_max_checkpoint_height(max_checkpoint_height)
             .want_transactions(true)
             .finish()
             .expect("configured all required parameters");

@@ -72,6 +72,7 @@ where
     user_agent: String,
     our_services: PeerServices,
     relay: bool,
+    max_checkpoint_height: Option<block::Height>,
 
     inbound_service: S,
     address_book_updater: AddressBookChangeSender,
@@ -96,6 +97,7 @@ where
             .field("user_agent", &self.user_agent)
             .field("our_services", &self.our_services)
             .field("relay", &self.relay)
+            .field("max_checkpoint_height", &self.max_checkpoint_height)
             .field("minimum_peer_version", &self.minimum_peer_version)
             .field("parent_span", &self.parent_span)
             .finish()
@@ -114,6 +116,7 @@ where
             user_agent: self.user_agent.clone(),
             our_services: self.our_services,
             relay: self.relay,
+            max_checkpoint_height: self.max_checkpoint_height,
             inbound_service: self.inbound_service.clone(),
             address_book_updater: self.address_book_updater.clone(),
             inv_collector: self.inv_collector.clone(),
@@ -406,6 +409,7 @@ where
     our_services: Option<PeerServices>,
     user_agent: Option<String>,
     relay: Option<bool>,
+    max_checkpoint_height: Option<block::Height>,
 
     inbound_service: Option<S>,
     address_book_updater: Option<AddressBookChangeSender>,
@@ -498,6 +502,7 @@ where
             our_services: self.our_services,
             user_agent: self.user_agent,
             relay: self.relay,
+            max_checkpoint_height: self.max_checkpoint_height,
             inv_collector: self.inv_collector,
             bans_receiver: self.bans_receiver,
         }
@@ -508,6 +513,14 @@ where
     /// If this is unset, the node will not request transactions.
     pub fn want_transactions(mut self, relay: bool) -> Self {
         self.relay = Some(relay);
+        self
+    }
+
+    /// Skip point rules for `block` messages at or below `height`.  Optional.
+    ///
+    /// If this is unset, every block's point rules are checked in the codec.
+    pub fn with_max_checkpoint_height(mut self, height: Option<block::Height>) -> Self {
+        self.max_checkpoint_height = height;
         self
     }
 
@@ -541,6 +554,7 @@ where
             user_agent,
             our_services,
             relay,
+            max_checkpoint_height: self.max_checkpoint_height,
             inbound_service,
             address_book_updater,
             inv_collector,
@@ -569,6 +583,7 @@ where
             our_services: None,
             user_agent: None,
             relay: None,
+            max_checkpoint_height: None,
             inbound_service: None,
             address_book_updater: None,
             inv_collector: None,
@@ -974,6 +989,7 @@ where
         let user_agent = self.user_agent.clone();
         let our_services = self.our_services;
         let relay = self.relay;
+        let max_checkpoint_height = self.max_checkpoint_height;
         let minimum_peer_version = self.minimum_peer_version.clone();
         let bans_receiver = self.bans_receiver.clone();
 
@@ -992,7 +1008,10 @@ where
 
             let mut peer_conn = Framed::new(
                 data_stream,
-                Codec::builder().for_network(&config.network).finish(),
+                Codec::builder()
+                    .for_network(&config.network)
+                    .with_max_checkpoint_height(max_checkpoint_height)
+                    .finish(),
             );
 
             let connection_info = match negotiate_version(

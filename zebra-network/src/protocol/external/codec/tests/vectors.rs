@@ -422,6 +422,95 @@ fn tx_message_with_bad_point_is_a_decode_error() {
     );
 }
 
+/// `block` message with a bad point = decode error above `max_checkpoint_height`, passed through
+/// at or below it (checkpoint verifier pins it by hash)
+#[test]
+fn block_message_with_bad_point_is_a_decode_error_above_checkpoints() {
+    use tokio_util::codec::{FramedRead, FramedWrite};
+    use zebra_chain::{block::Height, parameters::Network, transaction::TransactionExt};
+
+    let _init_guard = zebra_test::init();
+
+    let block = Network::Mainnet
+        .block_parsed_iter()
+        .find(|block| {
+            block
+                .transactions
+                .iter()
+                .any(|tx| tx.sapling_outputs().next().is_some())
+        })
+        .expect("test vectors have a block with a Sapling output");
+    let height = block
+        .coinbase_height()
+        .expect("test vector blocks have a coinbase height");
+    let cv = block
+        .transactions
+        .iter()
+        .find_map(|tx| {
+            tx.sapling_outputs()
+                .next()
+                .map(|output| output.cv().to_bytes())
+        })
+        .expect("found above");
+
+    let good = zebra_test::MULTI_THREADED_RUNTIME.block_on(async {
+        let mut bytes = Vec::new();
+        FramedWrite::new(
+            &mut bytes,
+            Codec::builder()
+                .with_max_body_len(MAX_PROTOCOL_MESSAGE_LEN)
+                .finish(),
+        )
+        .send(Message::Block(block.into()))
+        .await
+        .expect("valid block message encodes");
+        bytes
+    });
+
+    // 0xff.. is no canonical Jubjub encoding; checksum recomputed so only the point is bad
+    let mut bad = good.clone();
+    let at = bad
+        .windows(32)
+        .position(|window| window == cv)
+        .expect("output cv in the message");
+    bad[at..at + 32].copy_from_slice(&[0xff; 32]);
+    let checksum = sha256d::Checksum::from(&bad[HEADER_LEN..]);
+    bad[HEADER_LEN - 4..HEADER_LEN].copy_from_slice(&checksum.0);
+
+    let decode = |bytes: &[u8], max_checkpoint_height: Option<Height>| {
+        zebra_test::MULTI_THREADED_RUNTIME.block_on(async {
+            FramedRead::new(
+                Cursor::new(bytes),
+                Codec::builder()
+                    .with_max_body_len(MAX_PROTOCOL_MESSAGE_LEN)
+                    .with_max_checkpoint_height(max_checkpoint_height)
+                    .finish(),
+            )
+            .next()
+            .await
+            .expect("a frame")
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+        })
+    };
+
+    let bad_point = Err(Error::Parse("invalid shielded point encoding").to_string());
+    for (max_checkpoint_height, bad_block) in [
+        (None, bad_point.clone()),
+        (Some(Height(height.0 - 1)), bad_point),
+        (Some(height), Ok(())),
+    ] {
+        assert_eq!(
+            (
+                decode(&good, max_checkpoint_height),
+                decode(&bad, max_checkpoint_height)
+            ),
+            (Ok(()), bad_block),
+            "block {height:?}, max_checkpoint_height {max_checkpoint_height:?}",
+        );
+    }
+}
+
 /// Check that the version test vector deserializes correctly without the relay byte
 #[test]
 fn version_message_omitted_relay() {
