@@ -182,21 +182,51 @@ impl NoteCommitmentTree {
     /// chain and input into the proof.
     ///
     /// Returns an error if the tree is full.
-    #[allow(clippy::unwrap_in_result)]
     pub fn append(&mut self, cm_x: NoteCommitmentUpdate) -> Result<(), NoteCommitmentTreeError> {
         if self.inner.append(MerkleHashOrchard::from_cmx(&cm_x)) {
-            // Invalidate cached root
-            let cached_root = self
-                .cached_root
-                .get_mut()
-                .expect("a thread that previously held exclusive lock access panicked");
-
-            *cached_root = None;
-
+            self.invalidate_cached_root();
             Ok(())
         } else {
             Err(NoteCommitmentTreeError::FullTree)
         }
+    }
+
+    /// Appends note commitment x-coordinates, one hash batch per tree level
+    /// ([`Frontier::append_batch`](incrementalmerkletree::frontier::Frontier::append_batch))
+    ///
+    /// - `Ok` = last subtree completed (batches split at subtree ends, read off frontier)
+    /// - `Err(FullTree)` once tree full
+    pub fn append_batch(
+        &mut self,
+        cm_xs: &[NoteCommitmentUpdate],
+    ) -> Result<Option<(NoteCommitmentSubtreeIndex, MerkleHashOrchard)>, NoteCommitmentTreeError>
+    {
+        let mut subtree = None;
+        let mut rest = cm_xs;
+        while !rest.is_empty() {
+            let to_boundary = match self.remaining_subtree_leaf_nodes() {
+                0 => 1 << TRACKED_SUBTREE_HEIGHT,
+                remaining => remaining,
+            };
+            let (batch, after) = rest.split_at(to_boundary.min(rest.len()));
+            let appended = self
+                .inner
+                .append_batch(batch.iter().map(MerkleHashOrchard::from_cmx).collect());
+            self.invalidate_cached_root();
+            if !appended {
+                return Err(NoteCommitmentTreeError::FullTree);
+            }
+            subtree = self.completed_subtree_index_and_root().or(subtree);
+            rest = after;
+        }
+        Ok(subtree)
+    }
+
+    fn invalidate_cached_root(&mut self) {
+        *self
+            .cached_root
+            .get_mut()
+            .expect("a thread that previously held exclusive lock access panicked") = None;
     }
 
     /// Returns frontier of non-empty tree, or `None` if the tree is empty.
@@ -488,15 +518,64 @@ impl From<Vec<NoteCommitmentUpdate>> for NoteCommitmentTree {
     /// Compute the tree from a whole bunch of note commitments at once.
     fn from(values: Vec<NoteCommitmentUpdate>) -> Self {
         let mut tree = Self::default();
-
-        if values.is_empty() {
-            return tree;
-        }
-
-        for cm_x in values {
-            let _ = tree.append(cm_x);
-        }
-
+        let _ = tree.append_batch(&values);
         tree
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use incrementalmerkletree::{frontier::Frontier, Position};
+
+    use super::*;
+
+    /// Splits across a subtree boundary = per-note `append`: same tree, root and completed subtree
+    #[test]
+    fn append_batch_equals_append_across_a_subtree_boundary() {
+        let _init_guard = zebra_test::init();
+        let base = |i: u64| pallas::Base::from(i).to_repr();
+        let node = |i| MerkleHashOrchard::from_bytes(&base(i)).expect("canonical node");
+        let cm_x = |i| NoteCommitmentUpdate::from_bytes(&base(i)).expect("canonical cm_x");
+
+        // 3 notes short of completing subtree 0
+        let position = Position::from((1u64 << TRACKED_SUBTREE_HEIGHT) - 4);
+        let ommers = (0..u64::from(position.past_ommer_count()))
+            .map(|i| node(100 + i))
+            .collect();
+        let start = NoteCommitmentTree {
+            inner: Frontier::from_parts(position, node(99), ommers).expect("ommer per set bit"),
+            cached_root: Default::default(),
+        };
+        let notes: Vec<NoteCommitmentUpdate> = (0..5).map(cm_x).collect();
+
+        let mut expected = start.clone();
+        let mut expected_subtree = None;
+        for note in &notes {
+            expected.append(*note).expect("tree has room");
+            expected_subtree = expected
+                .completed_subtree_index_and_root()
+                .or(expected_subtree);
+        }
+        assert_eq!(
+            expected_subtree.map(|(index, _)| index),
+            Some(NoteCommitmentSubtreeIndex(0))
+        );
+
+        for split in [vec![5], vec![3, 2], vec![1, 2, 2]] {
+            let mut batched = start.clone();
+            let mut subtree = None;
+            let mut rest = notes.as_slice();
+            for len in &split {
+                let (batch, after) = rest.split_at(*len);
+                subtree = batched
+                    .append_batch(batch)
+                    .expect("tree has room")
+                    .or(subtree);
+                rest = after;
+            }
+            assert_eq!(batched.inner, expected.inner, "{split:?}");
+            assert_eq!(subtree, expected_subtree, "{split:?}");
+            assert_eq!(batched.root(), expected.root(), "{split:?}");
+        }
     }
 }
