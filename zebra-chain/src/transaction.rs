@@ -1164,7 +1164,7 @@ fn deserialize_and_check<R: std::io::Read>(
     // Together, these rules exclude pre-NU6.3 branch IDs from V6 transactions.
     // Older branch IDs select Orchard bundle versions that the V6 writer rejects.
     // Reject them here so every successfully parsed transaction can be serialized.
-    if inner.version() == TxVersion::V6
+    if inner.tx_version() == TxVersion::V6
         && compat::branch_id_to_network_upgrade(inner.consensus_branch_id())
             .is_none_or(|network_upgrade| network_upgrade < NetworkUpgrade::Nu6_3)
     {

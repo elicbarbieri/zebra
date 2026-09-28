@@ -1285,7 +1285,7 @@ fn v6_transaction_rejects_pre_nu6_3_branch_ids() {
         .zcash_serialize_to_vec()
         .expect("the NU6.3 fixture has a serializable V6 Orchard bundle");
 
-    let deserialized_transaction = Transaction::zcash_deserialize(&transaction_bytes[..])
+    let deserialized_transaction = CompressedTransaction::zcash_deserialize(&transaction_bytes[..])
         .expect("the unmodified NU6.3 fixture parses");
     assert_eq!(deserialized_transaction, transaction);
 
@@ -1298,9 +1298,12 @@ fn v6_transaction_rejects_pre_nu6_3_branch_ids() {
         // The wire branch ID follows the four-byte header and four-byte version group ID.
         transaction_bytes[8..12].copy_from_slice(&u32::from(branch_id).to_le_bytes());
 
-        let result_without_context = Transaction::zcash_deserialize(&transaction_bytes[..]);
-        let result_with_context =
-            Transaction::zcash_deserialize_with_context(&transaction_bytes[..], &BranchId::Nu6_3);
+        let result_without_context =
+            CompressedTransaction::zcash_deserialize(&transaction_bytes[..]);
+        let result_with_context = CompressedTransaction::zcash_deserialize_with_context(
+            &transaction_bytes[..],
+            &BranchId::Nu6_3,
+        );
 
         assert!(
             matches!(
