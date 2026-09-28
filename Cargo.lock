@@ -2485,8 +2485,7 @@ dependencies = [
 [[package]]
 name = "incrementalmerkletree"
 version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30821f91f0fa8660edca547918dc59812893b497d07c1144f326f07fdd94aba9"
+source = "git+https://github.com/elicbarbieri/incrementalmerkletree.git?rev=61325f3795048031a6941db591cd6773f774e724#61325f3795048031a6941db591cd6773f774e724"
 dependencies = [
  "either",
 ]
@@ -3543,7 +3542,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.15.5"
-source = "git+https://github.com/elicbarbieri/orchard.git?rev=0dc827e239b1edce01dd8f7053d05a1b03d939aa#0dc827e239b1edce01dd8f7053d05a1b03d939aa"
+source = "git+https://github.com/elicbarbieri/orchard.git?rev=e4f1e2c89e13c8f2fe0e5263a8e2df6a40cb4a4e#e4f1e2c89e13c8f2fe0e5263a8e2df6a40cb4a4e"
 dependencies = [
  "aes",
  "bitvec",
@@ -3564,6 +3563,7 @@ dependencies = [
  "pasta_curves",
  "rand 0.8.6",
  "rand_core 0.6.4",
+ "rayon",
  "reddsa",
  "serde",
  "sinsemilla",
@@ -4744,7 +4744,7 @@ dependencies = [
 [[package]]
 name = "sapling-crypto"
 version = "0.7.0"
-source = "git+https://github.com/elicbarbieri/sapling-crypto.git?rev=d78bfba7b06902ff26b4f9f17521f28f4441b9aa#d78bfba7b06902ff26b4f9f17521f28f4441b9aa"
+source = "git+https://github.com/elicbarbieri/sapling-crypto.git?rev=95bb788bc302e43703baca9c07f8e5b6296a8e44#95bb788bc302e43703baca9c07f8e5b6296a8e44"
 dependencies = [
  "aes",
  "bellman",
@@ -4765,6 +4765,7 @@ dependencies = [
  "memuse",
  "rand 0.8.6",
  "rand_core 0.6.4",
+ "rayon",
  "redjubjub",
  "subtle",
  "tracing",

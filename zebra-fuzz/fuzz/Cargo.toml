@@ -154,8 +154,9 @@ doc = false
 
 # Same as the root workspace's (not inherited: separate cargo workspace)
 [patch.crates-io]
-orchard = { git = "https://github.com/elicbarbieri/orchard.git", rev = "0dc827e239b1edce01dd8f7053d05a1b03d939aa" }
-sapling-crypto = { git = "https://github.com/elicbarbieri/sapling-crypto.git", rev = "d78bfba7b06902ff26b4f9f17521f28f4441b9aa" }
+incrementalmerkletree = { git = "https://github.com/elicbarbieri/incrementalmerkletree.git", rev = "61325f3795048031a6941db591cd6773f774e724" }
+orchard = { git = "https://github.com/elicbarbieri/orchard.git", rev = "e4f1e2c89e13c8f2fe0e5263a8e2df6a40cb4a4e" }
+sapling-crypto = { git = "https://github.com/elicbarbieri/sapling-crypto.git", rev = "95bb788bc302e43703baca9c07f8e5b6296a8e44" }
 zcash_primitives = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "564ec8ab07e3e71875f28249a04ab46ba1867fc0" }
 zcash_proofs = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "564ec8ab07e3e71875f28249a04ab46ba1867fc0" }
 zcash_protocol = { git = "https://github.com/elicbarbieri/librustzcash.git", rev = "564ec8ab07e3e71875f28249a04ab46ba1867fc0" }
