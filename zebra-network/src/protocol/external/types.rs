@@ -161,8 +161,8 @@ pub struct Nonce(pub u64);
 
 impl Default for Nonce {
     fn default() -> Self {
-        use rand::{thread_rng, Rng};
-        Self(thread_rng().gen())
+        use rand::RngExt;
+        Self(rand::rng().random())
     }
 }
 
@@ -173,8 +173,8 @@ pub struct Tweak(pub u32);
 
 impl Default for Tweak {
     fn default() -> Self {
-        use rand::{thread_rng, Rng};
-        Self(thread_rng().gen())
+        use rand::RngExt;
+        Self(rand::rng().random())
     }
 }
 

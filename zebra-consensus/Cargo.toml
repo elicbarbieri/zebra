@@ -38,10 +38,12 @@ fuzzing = []
 [dependencies]
 blake2b_simd = { workspace = true }
 bellman = { workspace = true }
+groth16 = { workspace = true }
 bls12_381 = { workspace = true }
 halo2 = { package = "halo2_proofs", version = "0.3" }
 jubjub = { workspace = true }
 rand = { workspace = true }
+rand_core_06 = { workspace = true }
 rayon = { workspace = true }
 mset.workspace = true
 

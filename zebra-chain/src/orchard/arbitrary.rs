@@ -2,8 +2,7 @@
 
 use group::{
     ff::{FromUniformBytes, PrimeField},
-    prime::PrimeCurveAffine,
-    GroupEncoding,
+    CurveAffine, GroupEncoding,
 };
 use halo2::pasta::pallas;
 use nonempty::NonEmpty;
@@ -151,7 +150,7 @@ fn spend_auth_verification_key_bytes() -> impl Strategy<Value = VerificationKeyB
     vec(any::<u8>(), 64).prop_map(|bytes| {
         let bytes = bytes.try_into().expect("vec is the correct length");
         let sk_bytes = pallas::Scalar::from_uniform_bytes(&bytes).to_repr();
-        let sk = SigningKey::try_from(sk_bytes).expect("canonical scalar");
+        let sk = SigningKey::from_bytes(&sk_bytes).expect("canonical scalar");
         VerificationKey::<SpendAuth>::from(&sk).into()
     })
 }

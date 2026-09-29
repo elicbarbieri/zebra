@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: breaking
+body: 'Migrated to `ff 0.14`, `group 0.14`, `pasta_curves 0.6`, `jubjub 0.11`, `bls12_381 0.9`, `reddsa 0.6`, `redjubjub 0.9`, `zcash_note_encryption 0.5` and `rand 0.10`, following the `orchard`, `sapling-crypto` and `librustzcash` releases that use them. Types re-exported from those crates change with them; `zebra-consensus` verifies Sprout proofs through `groth16 0.2` (split out of `bellman 0.15`).'
+time: 2026-09-29T21:00:00.000000000Z

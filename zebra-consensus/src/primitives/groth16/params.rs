@@ -1,6 +1,6 @@
 //! Loading and checking correctness of Groth16 Sprout parameters.
 
-use bellman::groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
+use ::groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
 use bls12_381::Bls12;
 use derive_getters::Getters;
 

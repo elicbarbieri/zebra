@@ -4176,7 +4176,7 @@ fn mock_sprout_join_split_data() -> (sprout::JoinSplitData, ed25519::SigningKey)
     );
 
     // Create a usable signing key
-    let signing_key = ed25519::SigningKey::new(rand::thread_rng());
+    let signing_key = ed25519::SigningKey::from(rand::random::<[u8; 32]>());
     let verification_key = ed25519::VerificationKey::from(&signing_key);
 
     let joinsplit_data = sprout::JoinSplitData {
@@ -4250,7 +4250,7 @@ fn modify_joinsplit_bytes_and_resign(
     // The sighash commits to `joinSplitPubKey` (but not to `joinSplitSig`), so write the new
     // public key before computing the sighash to sign below. In a V4 transaction with JoinSplits,
     // `joinSplitPubKey` is the 32 bytes preceding the final 64-byte `joinSplitSig`.
-    let signing_key = ed25519::SigningKey::new(rand::thread_rng());
+    let signing_key = ed25519::SigningKey::from(rand::random::<[u8; 32]>());
     let verification_key = ed25519::VerificationKey::from(&signing_key);
     let pub_key_offset = tx_bytes.len() - 96;
     tx_bytes[pub_key_offset..pub_key_offset + 32]
