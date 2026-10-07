@@ -176,8 +176,13 @@ required-git-spec = "rev"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 
 # List of URLs for allowed Git repositories.
-# Remove this exception with the NU7 patches once supporting crates are released.
-allow-git = []
+allow-git = [
+    # lazy point decompression `[patch.crates-io]` (until orchard, sapling-crypto & librustzcash release)
+    "https://github.com/elicbarbieri/orchard.git",
+    "https://github.com/elicbarbieri/sapling-crypto.git",
+    "https://github.com/elicbarbieri/librustzcash.git",
+    "https://github.com/elicbarbieri/incrementalmerkletree.git",
+]
 
 [sources.allow-org]
 github = [
