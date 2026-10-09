@@ -132,6 +132,15 @@ pub struct Config {
     /// deleted.
     pub delete_old_database: bool,
 
+    /// Size of the RocksDB block cache, in bytes.
+    ///
+    /// The block cache keeps recently read, decompressed database blocks in memory, shared by
+    /// all column families. A larger cache speeds up repeated reads, for example RPC clients
+    /// that request the same blocks or transactions, at the cost of more memory.
+    ///
+    /// Set to 512 MiB by default. `0` disables block caching.
+    pub block_cache_size: usize,
+
     // Debug configs
     //
     /// Commit blocks to the finalized state up to this height, then exit Zebra.
@@ -248,6 +257,7 @@ impl Default for Config {
             ephemeral: false,
             should_backup_non_finalized_state: true,
             delete_old_database: true,
+            block_cache_size: 512 * 1024 * 1024,
             debug_stop_at_height: None,
             debug_validity_check_interval: None,
             debug_skip_non_finalized_state_backup_task: false,

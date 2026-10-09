@@ -237,27 +237,34 @@ impl ZebraDb {
     /// transactions), nothing deserialized
     #[allow(clippy::unwrap_in_result)]
     pub fn raw_block_bytes(&self, hash_or_height: HashOrHeight) -> Option<Vec<u8>> {
-        let (header, transactions) = self.raw_block(hash_or_height)?;
+        let height = hash_or_height.height_or_else(|hash| self.height(hash))?;
+        let header = self.raw_block_header(height.into())?;
 
-        let count = CompactSizeMessage::try_from(transactions.len())
+        // Capacity hint only (`BlockInfo` absent mid-upgrade → `Vec` grows)
+        let size = self
+            .block_info(height.into())
+            .map_or(0, |info| info.size() as usize);
+
+        let mut bytes = Vec::with_capacity(size);
+        bytes.extend_from_slice(header.raw_bytes());
+
+        // 1-byte `CompactSize` placeholder (< 253 txs → spliced in place, else tail shifts)
+        let count_at = bytes.len();
+        bytes.push(0);
+
+        let tx_by_loc = self.db.cf_handle("tx_by_loc").unwrap();
+        let count = self.db.zs_append_forward_range_values(
+            &tx_by_loc,
+            TransactionLocation::min_for_height(height)
+                ..=TransactionLocation::max_for_height(height),
+            &mut bytes,
+        );
+
+        let count = CompactSizeMessage::try_from(count)
             .expect("a stored block has a serializable transaction count")
             .zcash_serialize_to_vec()
             .expect("writing to a `Vec` should never fail");
-
-        let mut bytes = Vec::with_capacity(
-            header.raw_bytes().len()
-                + count.len()
-                + transactions
-                    .iter()
-                    .map(|tx| tx.raw_bytes().len())
-                    .sum::<usize>(),
-        );
-
-        bytes.extend_from_slice(header.raw_bytes());
-        bytes.extend_from_slice(&count);
-        for transaction in &transactions {
-            bytes.extend_from_slice(transaction.raw_bytes());
-        }
+        bytes.splice(count_at..=count_at, count);
 
         Some(bytes)
     }
