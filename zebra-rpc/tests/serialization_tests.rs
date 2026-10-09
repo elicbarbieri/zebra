@@ -221,6 +221,7 @@ fn test_get_block_0() -> Result<(), Box<dyn std::error::Error>> {
     // TODO: this is a bit different from the others. Change?
     let new_obj = GetBlockResponse::Raw(raw_block_bytes.to_vec().into());
     assert_eq!(obj, new_obj);
+    assert_eq!(serde_json::to_string(&new_obj)?, json);
 
     Ok(())
 }

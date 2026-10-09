@@ -1538,7 +1538,7 @@ where
         let network = self.network.clone();
 
         let hash_or_height =
-            HashOrHeight::new(&hash_or_height, self.latest_chain_tip.best_tip_height())
+            HashOrHeight::new(&hash_or_height, || self.latest_chain_tip.best_tip_height())
                 // Reference for the legacy error code:
                 // <https://github.com/zcash/zcash/blob/99ad6fdc3a549ab510422820eea5e5ce9f60a5fd/src/rpc/blockchain.cpp#L629>
                 .map_error(server::error::LegacyCode::InvalidParameter)?;
@@ -1807,7 +1807,7 @@ where
         let network = self.network.clone();
 
         let hash_or_height =
-            HashOrHeight::new(&hash_or_height, self.latest_chain_tip.best_tip_height())
+            HashOrHeight::new(&hash_or_height, || self.latest_chain_tip.best_tip_height())
                 // Reference for the legacy error code:
                 // <https://github.com/zcash/zcash/blob/99ad6fdc3a549ab510422820eea5e5ce9f60a5fd/src/rpc/blockchain.cpp#L629>
                 .map_error(server::error::LegacyCode::InvalidParameter)?;
@@ -2249,7 +2249,7 @@ where
         let network = self.network.clone();
 
         let hash_or_height =
-            HashOrHeight::new(&hash_or_height, self.latest_chain_tip.best_tip_height())
+            HashOrHeight::new(&hash_or_height, || self.latest_chain_tip.best_tip_height())
                 // Reference for the legacy error code:
                 // <https://github.com/zcash/zcash/blob/99ad6fdc3a549ab510422820eea5e5ce9f60a5fd/src/rpc/blockchain.cpp#L629>
                 .map_error(server::error::LegacyCode::InvalidParameter)?;
@@ -4341,17 +4341,41 @@ impl SendRawTransactionResponse {
 pub enum GetBlockResponse {
     /// The request block, hex-encoded.
     //
-    // - Encode: `const_hex` (largest response Zebra encodes; `hex` builds it one `char` at a time)
+    // - Encode: `serialize_raw_block_hex` (largest response Zebra encodes)
     // - Decode: `hex` (input parsing, unchanged)
     Raw(
         #[serde(
-            serialize_with = "const_hex::serde::no_prefix::serialize",
+            serialize_with = "serialize_raw_block_hex",
             deserialize_with = "hex::deserialize"
         )]
         SerializedBlock,
     ),
     /// The block object.
     Object(Box<BlockObject>),
+}
+
+/// `block` as a JSON hex string, pre-built as a [`RawValue`](serde_json::value::RawValue)
+///
+/// - `serde_json` writes a `RawValue` verbatim (a `str` → per-byte escape scan, pointless on hex)
+/// - JSON-only: other serializers see `RawValue`'s private struct form
+fn serialize_raw_block_hex<S>(
+    block: &SerializedBlock,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::{ser::Error as _, Serialize as _};
+
+    let bytes = block.as_ref();
+    let hex_len = bytes.len() * 2;
+    let mut json = vec![b'"'; hex_len + 2];
+    const_hex::encode_to_slice(bytes, &mut json[1..=hex_len]).map_err(S::Error::custom)?;
+    let json = String::from_utf8(json).map_err(S::Error::custom)?;
+
+    serde_json::value::RawValue::from_string(json)
+        .map_err(S::Error::custom)?
+        .serialize(serializer)
 }
 
 #[deprecated(note = "Use `GetBlockResponse` instead")]
@@ -4711,7 +4735,7 @@ impl Default for GetBlockHashResponse {
 #[serde(untagged)]
 pub enum GetRawTransactionResponse {
     /// The raw transaction, encoded as hex bytes.
-    // `const_hex` encode / `hex` decode (see `GetBlockResponse::Raw`)
+    // `const_hex` encode (`hex` builds it one `char` at a time) / `hex` decode
     Raw(
         #[serde(
             serialize_with = "const_hex::serde::no_prefix::serialize",

@@ -158,8 +158,13 @@ impl HashOrHeight {
     /// height.
     ///
     /// When the provided `hash_or_height` contains a negative height, the `tip_height` parameter
-    /// needs to be `Some` since height `-1` points to the tip.
-    pub fn new(hash_or_height: &str, tip_height: Option<block::Height>) -> Result<Self, String> {
+    /// needs to return `Some` since height `-1` points to the tip.
+    //
+    // `tip_height` = closure (tip read only for negative heights)
+    pub fn new(
+        hash_or_height: &str,
+        tip_height: impl FnOnce() -> Option<block::Height>,
+    ) -> Result<Self, String> {
         hash_or_height
             .parse()
             .map(Self::Hash)
@@ -172,7 +177,7 @@ impl HashOrHeight {
                         if d.is_negative() {
                             {
                                 Ok(HashOrHeight::Height(
-                                    tip_height
+                                    tip_height()
                                         .ok_or("missing tip height")?
                                         .add(d)
                                         .ok_or("underflow when adding negative height to tip")?
