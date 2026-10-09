@@ -7,7 +7,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use futures::{future, FutureExt};
-use http_body_util::{BodyExt, Limited};
+use http_body_util::{BodyExt, Full, Limited};
 use hyper::header;
 use jsonrpsee::{
     core::BoxError,
@@ -134,23 +134,22 @@ impl<S> HttpRequestMiddleware<S> {
             .collect()
             .await?
             .to_bytes();
-        let (version, bytes) =
-            if let Ok(request) = serde_json::from_slice::<'_, JsonRpcRequest>(bytes.as_ref()) {
-                let version = request.version();
-                if matches!(version, JsonRpcVersion::Unknown) {
-                    (version, bytes)
-                } else {
-                    (
-                        version,
-                        serde_json::to_vec(&request.into_2()).expect("valid").into(),
-                    )
-                }
-            } else {
-                (JsonRpcVersion::Unknown, bytes)
-            };
+        let request = serde_json::from_slice::<'_, JsonRpcRequest>(bytes.as_ref()).ok();
+        let version = request
+            .as_ref()
+            .map_or(JsonRpcVersion::Unknown, JsonRpcRequest::version);
+
+        // 2.0 / unparsed (incl. batches) → forwarded untouched
+        let bytes = match request {
+            Some(request) if version.is_legacy() => {
+                serde_json::to_vec(&request.into_2()).expect("valid").into()
+            }
+            _ => bytes,
+        };
+
         Ok((
             version,
-            HttpRequest::from_parts(parts, HttpBody::from(bytes.as_ref().to_vec())),
+            HttpRequest::from_parts(parts, HttpBody::new(Full::new(bytes))),
         ))
     }
     /// Maps JSON-2.0 to whatever JSON-RPC version the client is using.
@@ -158,6 +157,11 @@ impl<S> HttpRequestMiddleware<S> {
         version: JsonRpcVersion,
         response: HttpResponse<HttpBody>,
     ) -> Result<HttpResponse<HttpBody>, BoxError> {
+        // `jsonrpsee` output = 2.0 already (no re-parse of multi-MB results)
+        if !version.is_legacy() {
+            return Ok(response);
+        }
+
         let (parts, body) = response.into_parts();
         let bytes = body.collect().await?.to_bytes();
         let bytes =
@@ -170,7 +174,7 @@ impl<S> HttpRequestMiddleware<S> {
             };
         Ok(HttpResponse::from_parts(
             parts,
-            HttpBody::from(bytes.as_ref().to_vec()),
+            HttpBody::new(Full::new(bytes)),
         ))
     }
 }
@@ -255,6 +259,16 @@ enum JsonRpcVersion {
     Unknown,
 }
 
+impl JsonRpcVersion {
+    /// Pre-2.0 dialect (request + response rewritten)
+    fn is_legacy(self) -> bool {
+        matches!(
+            self,
+            JsonRpcVersion::Bitcoind | JsonRpcVersion::Lightwalletd
+        )
+    }
+}
+
 /// A version-agnostic JSON-RPC request.
 #[derive(Debug, Deserialize, Serialize)]
 struct JsonRpcRequest {
@@ -320,20 +334,8 @@ impl JsonRpcResponse {
                     .or_else(|| serde_json::value::to_raw_value(&()).ok());
                 self.error = self.error.or(Some(serde_json::Value::Null));
             }
-            JsonRpcVersion::TwoPointZero => {
-                // `jsonrpsee` should be returning valid JSON-RPC 2.0 responses. However,
-                // a valid result of `null` can be parsed into `None` by this parser, so
-                // we map the result explicitly to `Null` when there is no error.
-                assert_eq!(self.jsonrpc.as_deref(), Some("2.0"));
-                if self.error.is_none() {
-                    self.result = self
-                        .result
-                        .or_else(|| serde_json::value::to_raw_value(&()).ok());
-                } else {
-                    assert!(self.result.is_none());
-                }
-            }
-            JsonRpcVersion::Unknown => (),
+            // Forwarded untouched (`response_from_json_rpc_2`)
+            JsonRpcVersion::TwoPointZero | JsonRpcVersion::Unknown => (),
         }
         self
     }

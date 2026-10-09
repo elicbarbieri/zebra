@@ -781,6 +781,8 @@ fn snapshot_rpc_getblock_data(
     settings: &insta::Settings,
 ) {
     let expected_block_data = hex::encode(expected_block_data);
+    // Via `serde_json` (raw hex = `RawValue`, JSON-only)
+    let block = serde_json::to_value(block).expect("block data serializes to JSON");
 
     settings.bind(|| {
         insta::assert_json_snapshot!(format!("get_block_data_{variant}"), block, {
