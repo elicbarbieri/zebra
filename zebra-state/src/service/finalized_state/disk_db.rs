@@ -14,7 +14,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::{Debug, Write},
     fs,
-    ops::RangeBounds,
+    ops::{RangeBounds, RangeInclusive},
     path::Path,
     sync::{
         atomic::{self, AtomicBool},
@@ -784,6 +784,40 @@ impl DiskDb {
         self.zs_range_iter_with_direction(cf, range, true)
     }
 
+    /// Raw values in `cf` in `range` → appended to `buf` in key order, returns the value count
+    ///
+    /// - Copied straight from RocksDB's buffers (no per-value allocation)
+    /// - [`Self::BULK_READ_AHEAD_BYTES`] readahead (one contiguous range, often many data blocks)
+    pub fn zs_append_forward_range_values<C, K>(
+        &self,
+        cf: &C,
+        range: RangeInclusive<K>,
+        buf: &mut Vec<u8>,
+    ) -> usize
+    where
+        C: rocksdb::AsColumnFamilyRef,
+        K: IntoDisk,
+    {
+        let start = range.start().as_bytes().as_ref().to_vec();
+        let end = range.end().as_bytes().as_ref().to_vec();
+
+        let mut opts = Self::zs_iter_opts(&(start.clone()..=end));
+        opts.set_readahead_size(Self::BULK_READ_AHEAD_BYTES);
+
+        let mut iter = self.db.raw_iterator_cf_opt(cf, opts);
+        iter.seek(start);
+
+        let mut count = 0;
+        while let Some(value) = iter.value() {
+            buf.extend_from_slice(value);
+            count += 1;
+            iter.next();
+        }
+        iter.status().expect("unexpected database failure");
+
+        count
+    }
+
     /// Returns an iterator over the items in `cf` in `range`.
     ///
     /// RocksDB iterators are ordered by increasing key bytes by default.
@@ -933,6 +967,12 @@ impl DiskDb {
         }
     }
 
+    /// Prefetch for [`Self::zs_append_forward_range_values`] (one read, not one per 4 KiB block)
+    ///
+    /// - Trimmed to `iterate_upper_bound` (`auto_readahead_size`, default) → no over-read
+    /// - Default auto-readahead starts only after 2 reads, at 8 KiB
+    const BULK_READ_AHEAD_BYTES: usize = 256 * 1024;
+
     /// The ideal open file limit for Zebra
     const IDEAL_OPEN_FILE_LIMIT: u64 = 1024;
 
@@ -1041,7 +1081,7 @@ impl DiskDb {
         let db_kind = db_kind.as_ref();
         let path = config.db_path(db_kind, format_version_in_code.major, network);
 
-        let db_options = DiskDb::options();
+        let db_options = DiskDb::open_options(config.block_cache_size);
 
         let column_families =
             DiskDb::construct_column_families(db_options.clone(), &path, column_families_in_code);
@@ -1293,21 +1333,38 @@ impl DiskDb {
         None
     }
 
-    /// Returns the database options for the finalized state database.
-    fn options() -> rocksdb::Options {
-        let mut opts = rocksdb::Options::default();
+    /// [`Self::options`] + one `block_cache_size`-byte LRU block cache shared by every column family
+    fn open_options(block_cache_size: usize) -> rocksdb::Options {
+        let mut opts = DiskDb::options();
+        let mut block_based_opts = DiskDb::block_based_options();
+
+        block_based_opts.set_block_cache(&rocksdb::Cache::new_lru_cache(block_cache_size));
+        opts.set_block_based_table_factory(&block_based_opts);
+
+        opts
+    }
+
+    /// Block-based table options for the finalized state database
+    fn block_based_options() -> rocksdb::BlockBasedOptions {
         let mut block_based_opts = rocksdb::BlockBasedOptions::default();
-
-        const ONE_MEGABYTE: usize = 1024 * 1024;
-
-        opts.create_if_missing(true);
-        opts.create_missing_column_families(true);
 
         // Use the recommended Ribbon filter setting for all column families.
         //
         // Ribbon filters are faster than Bloom filters in Zebra, as of April 2022.
         // (They aren't needed for single-valued column families, but they don't hurt either.)
         block_based_opts.set_ribbon_filter(9.9);
+
+        block_based_opts
+    }
+
+    /// Returns the database options for the finalized state database.
+    fn options() -> rocksdb::Options {
+        let mut opts = rocksdb::Options::default();
+
+        const ONE_MEGABYTE: usize = 1024 * 1024;
+
+        opts.create_if_missing(true);
+        opts.create_missing_column_families(true);
 
         // Use the recommended LZ4 compression type.
         //
@@ -1333,7 +1390,7 @@ impl DiskDb {
         opts.set_max_open_files(db_file_limit);
 
         // Set the block-based options
-        opts.set_block_based_table_factory(&block_based_opts);
+        opts.set_block_based_table_factory(&DiskDb::block_based_options());
 
         opts
     }
