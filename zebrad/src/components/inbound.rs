@@ -647,6 +647,7 @@ impl Service<zn::Request> for Inbound {
             }
 
             zn::Request::AdvertiseBlockToAll(_) => unreachable!("should always be decoded as `AdvertiseBlock` request"),
+            zn::Request::MempoolTransactionIdsFrom(_) => unreachable!("should always be decoded as `MempoolTransactionIds` request"),
 
             zn::Request::BlockDownload { .. } => unreachable!("peers never send outbound block downloads"),
 
