@@ -1,0 +1,4 @@
+project: zebra-rpc
+kind: Added
+body: 'Indexer gRPC `GetBlockRange(start, end)`: streams the best-chain blocks at `start..=end` as their stored bytes, ending with `NOT_FOUND` above the tip. `GetBlock` now also serves stored bytes (`ReadRequest::RawBlock`) instead of deserializing and re-serializing the block.'
+time: 2026-10-12T19:00:00.000000000Z
