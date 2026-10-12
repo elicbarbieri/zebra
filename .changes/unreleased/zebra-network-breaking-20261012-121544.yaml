@@ -1,0 +1,4 @@
+project: zebra-network
+kind: breaking
+body: Added `Config::reserved_listener` (`ReservedListener`), a second P2P listener with its own inbound slots, counted in `peerset_total_connection_limit()`.
+time: 2026-10-12T12:15:44.324584005-07:00
