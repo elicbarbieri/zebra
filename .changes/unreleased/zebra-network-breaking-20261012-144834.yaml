@@ -1,0 +1,4 @@
+project: zebra-network
+kind: breaking
+body: '`Request::MempoolTransactionIdsFrom(peer)`: a `mempool` request the peer set routes to that peer alone (`NoReadyPeers` while it is not ready), so each listing is attributable to the peer that sent it. Exhaustive matches on `Request` gain a variant.'
+time: 2026-10-12T14:48:34.959850934-07:00

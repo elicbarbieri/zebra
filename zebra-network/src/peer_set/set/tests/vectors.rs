@@ -125,6 +125,70 @@ fn peer_set_ready_single_connection() {
     });
 }
 
+/// `MempoolTransactionIdsFrom(peer)` reaches that peer alone (asked as a plain `mempool`), and a
+/// peer the set does not hold ready fails at once instead of falling back to another
+#[test]
+fn a_named_peers_mempool_request_reaches_that_peer_alone() {
+    let peer_version = Version::min_specified_for_upgrade(&Network::Mainnet, NetworkUpgrade::Nu6_2);
+    let peer_versions = PeerVersions {
+        peer_versions: vec![peer_version; 3],
+    };
+    let (runtime, _init_guard) = zebra_test::init_async();
+    let _guard = runtime.enter();
+    tokio::time::pause();
+    let (discovered_peers, mut handles) = peer_versions.mock_peer_discovery();
+    let (minimum_peer_version, _best_tip_height) =
+        MinimumPeerVersion::with_mock_chain_tip(&Network::Mainnet);
+    let peer = |port: u16| PeerSocketAddr::from(SocketAddr::new([127, 0, 0, 1].into(), port));
+
+    runtime.block_on(async move {
+        let (mut peer_set, _peer_set_guard) = PeerSetBuilder::new()
+            .with_discover(discovered_peers)
+            .with_minimum_peer_version(minimum_peer_version)
+            .max_conns_per_ip(3)
+            .build();
+        let ready = peer_set
+            .ready()
+            .await
+            .expect("peer set service is always ready");
+        assert_eq!(ready.ready_services.len(), 3);
+
+        let _listing = ready.call(Request::MempoolTransactionIdsFrom(peer(2)));
+        let received: Vec<bool> = handles
+            .iter_mut()
+            .map(|handle| {
+                let request = handle.try_to_receive_outbound_client_request();
+                let asked = request.request().map(|request| request.request.clone());
+                assert!(matches!(
+                    asked,
+                    None | Some(Request::MempoolTransactionIdsFrom(_))
+                ));
+                asked.is_some()
+            })
+            .collect();
+        assert_eq!(received, [false, true, false], "only 127.0.0.1:2 asked");
+
+        let ready = peer_set
+            .ready()
+            .await
+            .expect("peer set service is always ready");
+        let unknown = ready
+            .call(Request::MempoolTransactionIdsFrom(peer(9)))
+            .await;
+        let refused = unknown.expect_err("no fallback to another peer");
+        let refused = refused
+            .downcast_ref::<SharedPeerError>()
+            .map(|e| e.inner_debug());
+        assert_eq!(refused.as_deref(), Some("NoReadyPeers"));
+        assert!(
+            handles
+                .iter_mut()
+                .all(|h| h.try_to_receive_outbound_client_request().is_empty()),
+            "no other peer answered for it"
+        );
+    });
+}
+
 #[test]
 fn peer_set_ready_multiple_connections() {
     // Use three peers with the same version

@@ -217,6 +217,15 @@ pub enum Request {
     ///
     /// Returns [`Response::TransactionIds`](super::Response::TransactionIds).
     MempoolTransactionIds,
+
+    /// [`Request::MempoolTransactionIds`] of one named peer: the peer set routes it to that peer
+    /// alone, so the listing is attributable (a quorum over peers' mempools counts each peer).
+    ///
+    /// # Returns
+    ///
+    /// Returns [`Response::TransactionIds`](super::Response::TransactionIds), or
+    /// [`PeerError::NoReadyPeers`](crate::PeerError::NoReadyPeers) while that peer is not ready.
+    MempoolTransactionIdsFrom(PeerSocketAddr),
 }
 
 impl fmt::Display for Request {
@@ -249,6 +258,9 @@ impl fmt::Display for Request {
             Request::AdvertiseBlock(_, _) => "AdvertiseBlock".to_string(),
             Request::AdvertiseBlockToAll(_) => "AdvertiseBlockToAll".to_string(),
             Request::MempoolTransactionIds => "MempoolTransactionIds".to_string(),
+            Request::MempoolTransactionIdsFrom(peer) => {
+                format!("MempoolTransactionIdsFrom({peer})")
+            }
         })
     }
 }
@@ -270,7 +282,9 @@ impl Request {
             Request::AdvertiseTransactionIds(_, _) => "AdvertiseTransactionIds",
 
             Request::AdvertiseBlock(_, _) | Request::AdvertiseBlockToAll(_) => "AdvertiseBlock",
-            Request::MempoolTransactionIds => "MempoolTransactionIds",
+            Request::MempoolTransactionIds | Request::MempoolTransactionIdsFrom(_) => {
+                "MempoolTransactionIds"
+            }
         }
     }
 
