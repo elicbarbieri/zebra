@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 mod component;
 mod endpoint;
+mod journal;
 
 #[cfg(feature = "flamegraph")]
 mod flame;
