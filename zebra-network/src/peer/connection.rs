@@ -1203,7 +1203,7 @@ where
                     )
             }
 
-            (AwaitingRequest, MempoolTransactionIds) => {
+            (AwaitingRequest, MempoolTransactionIds | MempoolTransactionIdsFrom(_)) => {
                 self
                     .peer_tx
                     .send(Message::Mempool)

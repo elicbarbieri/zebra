@@ -1408,6 +1408,24 @@ where
         .boxed()
     }
 
+    /// Routes `req` to `peer` alone (never another peer in its place)
+    ///
+    /// - `peer` not ready (busy, gone, never connected) = [`NoReadyPeers`](PeerError::NoReadyPeers)
+    fn route_to(
+        &mut self,
+        req: Request,
+        peer: PeerSocketAddr,
+    ) -> <Self as tower::Service<Request>>::Future {
+        if let Some(mut svc) = self.take_ready_service(&peer) {
+            let fut = svc.call(req);
+            self.push_unready(peer, svc);
+            return fut.map_err(Into::into).boxed();
+        }
+        async move { Err(SharedPeerError::from(PeerError::NoReadyPeers)) }
+            .map_err(Into::into)
+            .boxed()
+    }
+
     /// Tries to route a request to a ready peer that advertised that inventory,
     /// falling back to a ready peer that isn't missing the inventory.
     ///
@@ -2356,6 +2374,9 @@ where
             Request::AdvertiseBlockToAll(_) | Request::AdvertiseBlock(_, _) => {
                 future::ready(Err(PeerError::AdvertRequiresDedicatedService.into())).boxed()
             }
+
+            // A named peer's listing: attributable, never answered by another
+            Request::MempoolTransactionIdsFrom(peer) => self.route_to(req, peer),
 
             // Broadcasts that must always reach the configured zcashd-compat sidecar peers
             Request::PushTransaction(_, _) => self.route_sidecar_broadcast(req),
