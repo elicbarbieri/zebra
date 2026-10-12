@@ -23,6 +23,7 @@ use crate::{
     address_book::AddressMetrics,
     address_book_peers::AddressBookPeers,
     meta_addr::{MetaAddr, MetaAddrChange},
+    types::PeerServices,
     AddressBook, BanList, BoxError, Config,
 };
 
@@ -291,9 +292,12 @@ impl AddressBookUpdater {
     ///
     /// The task exits with an error when all the returned
     /// [`AddressBookChangeSender`]s and [`AddressBookService`]s are closed.
+    ///
+    /// - `advertised_services` = gossiped with `local_listener` (the handshakes' own)
     pub fn spawn(
         config: &Config,
         local_listener: SocketAddr,
+        advertised_services: PeerServices,
     ) -> (
         Arc<std::sync::Mutex<AddressBook>>,
         watch::Receiver<BanList>,
@@ -307,7 +311,8 @@ impl AddressBookUpdater {
             &config.network,
             config.max_connections_per_ip,
             span!(Level::TRACE, "address book"),
-        );
+        )
+        .with_local_listener_services(advertised_services);
 
         // Use an update channel and buffer based on the maximum number of
         // inbound and outbound peers.

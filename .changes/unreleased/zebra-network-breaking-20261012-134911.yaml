@@ -1,0 +1,4 @@
+project: zebra-network
+kind: breaking
+body: '`init` and `init_with_block_gossip_peer_ips` take `advertised_services`: the services every handshake advertises and our listener is gossiped with (zebrad passes `NODE_NETWORK`; a node that serves no blocks passes `PeerServices::empty()`). `AddressBookUpdater::spawn` takes the same argument, `MetaAddr::new_local_listener_change` takes the listener services, and `AddressBook::with_local_listener_services` sets them.'
+time: 2026-10-12T13:49:11.532622152-07:00

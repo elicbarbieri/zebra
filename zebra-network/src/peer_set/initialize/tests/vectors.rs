@@ -392,7 +392,7 @@ async fn written_peer_cache_is_automatically_read_on_startup() {
         address_book_service,
         _address_metrics,
         address_book_updater_task_handle,
-    ) = AddressBookUpdater::spawn(&config, config.listen_addr);
+    ) = AddressBookUpdater::spawn(&config, config.listen_addr, PeerServices::NODE_NETWORK);
 
     // Exercise the startup loader without opening sockets or handshaking with public peers.
     let initial_peers = limit_initial_peers(&config, address_book_updater).await;
@@ -763,7 +763,7 @@ async fn crawler_refills_spare_outbound_capacity_on_timer() {
         address_book_service,
         _address_metrics,
         _address_book_updater_guard,
-    ) = AddressBookUpdater::spawn(&config, config.listen_addr);
+    ) = AddressBookUpdater::spawn(&config, config.listen_addr, PeerServices::NODE_NETWORK);
 
     // Add enough candidates for the initial fill and the replacement dials.
     let candidate_count = outbound_limit * 2 + 1;
@@ -1528,6 +1528,7 @@ async fn banned_connected_inbound_peer_is_dropped_from_peer_set() {
         peers_inbound_service,
         NoChainTip,
         "Test user agent".to_string(),
+        PeerServices::NODE_NETWORK,
     )
     .await;
 
@@ -2125,11 +2126,95 @@ async fn add_initial_peers_deadlock() {
         nil_inbound_service,
         NoChainTip,
         "Test user agent".to_string(),
+        PeerServices::NODE_NETWORK,
     );
 
     tokio::time::timeout(TIME_LIMIT, init_future)
         .await
         .expect("should not timeout");
+}
+
+/// `advertised_services` reach the remote's address book (handshake) and our own gossiped
+/// listener; a no-services dialer still gets a full node's inbound slot
+#[tokio::test]
+async fn advertised_services_reach_the_remote_and_our_gossiped_listener() {
+    let _init_guard = zebra_test::init();
+
+    if zebra_test::net::zebra_skip_network_tests() {
+        return;
+    }
+
+    let listener_config = |initial_peers: IndexSet<String>| Config {
+        listen_addr: "127.0.0.1:0".parse().unwrap(),
+        peerset_initial_target_size: 1,
+        initial_mainnet_peers: initial_peers,
+        initial_testnet_peers: IndexSet::new(),
+        cache_dir: CacheDir::disabled(),
+        ..Config::default()
+    };
+    let nil_inbound_service = service_fn(|_| async { Ok(Response::Nil) });
+
+    let (_full_peers, full_book, _) = init(
+        listener_config(IndexSet::new()),
+        nil_inbound_service,
+        NoChainTip,
+        "Full node".to_string(),
+        PeerServices::NODE_NETWORK,
+    )
+    .await;
+    let full_addr = full_book.lock().unwrap().local_listener_socket_addr();
+
+    let (_quiet_peers, quiet_book, _) = init(
+        listener_config([full_addr.to_string()].into_iter().collect()),
+        nil_inbound_service,
+        NoChainTip,
+        "Serves nothing".to_string(),
+        PeerServices::empty(),
+    )
+    .await;
+
+    // services as each side's address book records the other
+    let connected = |book: &Arc<std::sync::Mutex<AddressBook>>, inbound: bool| {
+        book.lock()
+            .unwrap()
+            .peers()
+            .find(|meta| {
+                meta.is_inbound() == inbound
+                    && meta.last_connection_state() == PeerAddrState::Responded
+            })
+            .map(|meta| meta.services())
+    };
+    const TIME_LIMIT: Duration = Duration::from_secs(20);
+    let deadline = Instant::now() + TIME_LIMIT;
+    let (inbound_at_full, outbound_at_quiet) = loop {
+        match (connected(&full_book, true), connected(&quiet_book, false)) {
+            (Some(inbound), Some(outbound)) => break (inbound, outbound),
+            _ if Instant::now() < deadline => tokio::time::sleep(Duration::from_millis(25)).await,
+            seen => panic!("no handshake within {TIME_LIMIT:?}: {seen:?}"),
+        }
+    };
+
+    let gossiped = |book: &Arc<std::sync::Mutex<AddressBook>>| {
+        book.lock()
+            .unwrap()
+            .local_listener_meta_addr(Utc::now())
+            .services()
+    };
+    assert_eq!(
+        (
+            inbound_at_full,
+            outbound_at_quiet,
+            gossiped(&quiet_book),
+            gossiped(&full_book)
+        ),
+        (
+            Some(PeerServices::empty()),
+            Some(PeerServices::NODE_NETWORK),
+            Some(PeerServices::empty()),
+            Some(PeerServices::NODE_NETWORK),
+        ),
+        "(full node's view of us, our view of it, our gossiped listener, its gossiped listener)"
+    );
 }
 
 /// Open a local listener on `listen_addr` for `network`.
@@ -2154,6 +2239,7 @@ async fn local_listener_port_with(listen_addr: SocketAddr, network: Network) {
         inbound_service,
         NoChainTip,
         "Test user agent".to_string(),
+        PeerServices::NODE_NETWORK,
     )
     .await;
     let local_listener = address_book
@@ -2220,6 +2306,7 @@ where
         inbound_service,
         NoChainTip,
         "Test user agent".to_string(),
+        PeerServices::NODE_NETWORK,
     )
     .await;
 
@@ -2262,7 +2349,7 @@ where
         address_book_service,
         _address_metrics,
         _address_book_updater_guard,
-    ) = AddressBookUpdater::spawn(&config, config.listen_addr);
+    ) = AddressBookUpdater::spawn(&config, config.listen_addr, PeerServices::NODE_NETWORK);
 
     // Add enough fake peers to go over the limit, even if the limit is zero.
     let over_limit_peers = config.peerset_outbound_connection_limit() * 2 + 1;
@@ -2572,7 +2659,7 @@ where
         _address_book_service,
         _address_metrics,
         address_book_updater_guard,
-    ) = AddressBookUpdater::spawn(&config, unused_v4);
+    ) = AddressBookUpdater::spawn(&config, unused_v4, PeerServices::NODE_NETWORK);
 
     let add_fut = add_initial_peers(config, outbound_connector, peerset_tx, address_book_updater);
     let add_task_handle = tokio::spawn(add_fut);

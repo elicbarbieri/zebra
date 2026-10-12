@@ -82,10 +82,14 @@ fn new_local_listener_is_gossipable() {
     let local_now: DateTime32 = chrono_now.try_into().expect("will succeed until 2038");
 
     let address = PeerSocketAddr::from(([192, 168, 180, 9], 10_000));
-    let peer =
-        MetaAddr::new_local_listener_change(address).into_new_meta_addr(instant_now, local_now);
+    for services in [PeerServices::NODE_NETWORK, PeerServices::empty()] {
+        let peer = MetaAddr::new_local_listener_change(address, services)
+            .into_new_meta_addr(instant_now, local_now);
 
-    assert!(peer.is_active_for_gossip(chrono_now));
+        assert!(peer.is_active_for_gossip(chrono_now));
+        // gossiped as advertised (a node serving no blocks never claims NODE_NETWORK)
+        assert_eq!(peer.services(), Some(services));
+    }
 }
 
 /// Test if recently received gossiped peer is gossipable.
