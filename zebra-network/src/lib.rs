@@ -191,7 +191,7 @@ pub use crate::{
     address_book::AddressBook,
     address_book_peers::AddressBookPeers,
     ban_list::{BanList, MisbehaviorReport},
-    config::{CacheDir, Config},
+    config::{CacheDir, Config, ReservedListener},
     isolated::{connect_isolated, connect_isolated_tcp_direct},
     meta_addr::{PeerAddrState, PeerSocketAddr},
     peer::{Client, ConnectedAddr, ConnectionInfo, HandshakeError, PeerError, SharedPeerError},

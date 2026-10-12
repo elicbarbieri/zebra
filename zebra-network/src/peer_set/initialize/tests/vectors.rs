@@ -16,6 +16,7 @@
 use std::{
     collections::HashSet,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroUsize,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -44,13 +45,14 @@ use crate::{
         crawler_services,
         initialize::{
             accept_inbound_connections, add_initial_peers, crawl_and_dial, limit_initial_peers,
-            open_listener, DiscoveredPeer,
+            open_listener, open_reserved_listener, spawn_inbound_listeners, DiscoveredPeer,
         },
         set::MorePeers,
         ActiveConnectionCounter, ConnectionTracker,
     },
     protocol::types::PeerServices,
-    AddressBook, BoxError, Config, MisbehaviorReport, PeerSocketAddr, Request, Response,
+    AddressBook, BoxError, Config, MisbehaviorReport, PeerSocketAddr, Request, ReservedListener,
+    Response,
 };
 
 use Network::*;
@@ -1139,6 +1141,7 @@ async fn listener_reserves_one_zcashd_compat_inbound_slot() {
     let listen_fut = accept_inbound_connections(
         config.clone(),
         tcp_listener,
+        config.peerset_inbound_connection_limit(),
         MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
         success_stay_open_inbound_handshaker,
         peerset_tx,
@@ -1229,8 +1232,9 @@ async fn listener_zcashd_compat_reconnect_bypasses_recent_ip_limit() {
     let (_bans_tx, bans_rx) = tokio::sync::watch::channel(Default::default());
 
     let listen_fut = accept_inbound_connections(
-        config,
+        config.clone(),
         tcp_listener,
+        config.peerset_inbound_connection_limit(),
         MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
         success_disconnect_inbound_handshaker,
         peerset_tx,
@@ -1288,8 +1292,9 @@ async fn listener_bans_zcashd_compat_peer_before_reserved_slot() {
     let (bans_tx, bans_rx) = tokio::sync::watch::channel(bans);
 
     let listen_fut = accept_inbound_connections(
-        config,
+        config.clone(),
         tcp_listener,
+        config.peerset_inbound_connection_limit(),
         MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
         unreachable_inbound_handshaker,
         peerset_tx,
@@ -1375,8 +1380,9 @@ async fn listener_canonicalizes_ipv4_mapped_inbound_addrs() {
     let (_bans_tx, bans_rx) = tokio::sync::watch::channel(Default::default());
 
     let listen_fut = accept_inbound_connections(
-        config,
+        config.clone(),
         tcp_listener,
+        config.peerset_inbound_connection_limit(),
         MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
         success_stay_open_inbound_handshaker,
         peerset_tx,
@@ -1459,8 +1465,9 @@ async fn listener_bans_ipv4_mapped_inbound_connection() {
     let (bans_tx, bans_rx) = tokio::sync::watch::channel(bans);
 
     let listen_fut = accept_inbound_connections(
-        config,
+        config.clone(),
         tcp_listener,
+        config.peerset_inbound_connection_limit(),
         MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
         unreachable_inbound_handshaker,
         peerset_tx,
@@ -2456,6 +2463,7 @@ where
     let listen_fut = accept_inbound_connections(
         config.clone(),
         tcp_listener,
+        config.peerset_inbound_connection_limit(),
         MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
         listen_handshaker,
         peerset_tx.clone(),
@@ -2578,4 +2586,192 @@ where
     let add_task_handle = tokio::spawn(add_fut);
 
     (add_task_handle, peerset_rx, address_book_updater_guard)
+}
+
+/// Reserved peers keep their slots while public peers overflow the public listener, and
+/// overflow on the reserved listener is dropped rather than taking public slots.
+#[tokio::test]
+async fn reserved_listener_slots_hold_beside_full_public_slots() {
+    let _init_guard = zebra_test::init();
+
+    // This test requires an IPv4 network stack with 127.0.0.1 as localhost.
+    if zebra_test::net::zebra_skip_network_tests() {
+        return;
+    }
+
+    let public_ip = Ipv4Addr::LOCALHOST;
+    let reserved_ip = Ipv4Addr::new(127, 0, 0, 3);
+    let (peer_tracker_tx, mut peer_tracker_rx) = mpsc::unbounded();
+
+    let success_stay_open_inbound_handshaker =
+        service_fn(move |req: HandshakeRequest<TcpStream>| {
+            let peer_tracker_tx = peer_tracker_tx.clone();
+            async move {
+                let HandshakeRequest {
+                    data_stream: tcp_stream,
+                    connected_addr,
+                    connection_tracker,
+                } = req;
+
+                let ConnectedAddr::InboundDirect { addr } = connected_addr else {
+                    unreachable!("inbound listener handshakes use inbound direct addresses");
+                };
+
+                let (fake_client, _harness) = ClientTestHarness::build()
+                    .with_connected_addr(connected_addr)
+                    .finish();
+
+                peer_tracker_tx
+                    .unbounded_send((addr.ip(), tcp_stream, connection_tracker))
+                    .expect("unexpected error sending to unbounded channel");
+
+                Ok(fake_client)
+            }
+        });
+
+    // public inbound limit = 1 * INBOUND_PEER_LIMIT_MULTIPLIER = 5, reserved = 2
+    let mut config = Config {
+        listen_addr: "127.0.0.1:0".parse().unwrap(),
+        peerset_initial_target_size: 1,
+        max_connections_per_ip: usize::MAX,
+        reserved_listener: Some(ReservedListener {
+            listen_addr: "127.0.0.1:0".parse().unwrap(),
+            slots: NonZeroUsize::new(2).unwrap(),
+        }),
+        ..Config::default()
+    };
+    let (tcp_listener, listen_addr) = open_listener(&config.clone()).await;
+    config.listen_addr = listen_addr;
+    let reserved_tcp_listener = open_reserved_listener(&config)
+        .await
+        .expect("reserved listener is configured");
+    let reserved_listen_addr = reserved_tcp_listener.local_addr().unwrap();
+
+    let (public_limit, reserved_limit) = (
+        config.peerset_inbound_connection_limit(),
+        config.reserved_inbound_connection_limit(),
+    );
+    let (peerset_tx, mut peerset_rx) =
+        mpsc::channel::<DiscoveredPeer>(config.peerset_total_connection_limit());
+    let (_bans_tx, bans_rx) = tokio::sync::watch::channel(Default::default());
+
+    let listen_task_handles = spawn_inbound_listeners(
+        &config,
+        tcp_listener,
+        Some(reserved_tcp_listener),
+        MIN_INBOUND_PEER_CONNECTION_INTERVAL_FOR_TESTS,
+        success_stay_open_inbound_handshaker,
+        peerset_tx,
+        bans_rx,
+        Vec::new(),
+    );
+
+    // One past each limit: the public overflow must not reach the reserved slots, and the
+    // reserved overflow must not reach the public slots.
+    let mut connections = Vec::new();
+    for _ in 0..=public_limit {
+        connections.push(connect_from(public_ip, listen_addr).await);
+    }
+    for _ in 0..=reserved_limit {
+        connections.push(connect_from(reserved_ip, reserved_listen_addr).await);
+    }
+
+    tokio::time::sleep(LISTENER_TEST_DURATION).await;
+
+    for listen_task_handle in listen_task_handles {
+        listen_task_handle.abort();
+        tokio::task::yield_now().await;
+        assert_listener_task_cancelled(listen_task_handle);
+    }
+
+    let accepted_ips = drain_accepted_inbound_ips(&mut peer_tracker_rx);
+    let accepted_from = |ip| {
+        accepted_ips
+            .iter()
+            .filter(|accepted| **accepted == ip)
+            .count()
+    };
+    assert_eq!(
+        (accepted_from(public_ip), accepted_from(reserved_ip)),
+        (public_limit, reserved_limit),
+        "each listener admits exactly its own limit: accepted {accepted_ips:?}"
+    );
+    assert_eq!(
+        drain_discovered_peers(&mut peerset_rx),
+        public_limit + reserved_limit
+    );
+
+    std::mem::drop(connections);
+}
+
+/// `init()` opens the reserved listener, handshakes on it, and adds its peers to the peer set,
+/// without advertising its address.
+#[tokio::test]
+async fn init_adds_reserved_listener_peers_without_advertising_it() {
+    let _init_guard = zebra_test::init();
+
+    // This test requires an IPv4 network stack with 127.0.0.1 as localhost.
+    if zebra_test::net::zebra_skip_network_tests() {
+        return;
+    }
+
+    let peers_inbound_service =
+        service_fn(|_req| async move { Ok::<Response, BoxError>(Response::Peers(Vec::new())) });
+
+    let reserved_listen_addr: SocketAddr = format!("127.0.0.1:{}", random_known_port())
+        .parse()
+        .unwrap();
+    let config = Config {
+        listen_addr: "127.0.0.1:0".parse().unwrap(),
+        peerset_initial_target_size: 1,
+        reserved_listener: Some(ReservedListener {
+            listen_addr: reserved_listen_addr,
+            slots: NonZeroUsize::new(1).unwrap(),
+        }),
+
+        // Stop Zebra making outbound connections
+        initial_mainnet_peers: IndexSet::new(),
+        initial_testnet_peers: IndexSet::new(),
+        cache_dir: CacheDir::disabled(),
+
+        ..Config::default()
+    };
+
+    let (mut peer_set, address_book, _misbehavior_tx) = init(
+        config,
+        peers_inbound_service,
+        NoChainTip,
+        "Test user agent".to_string(),
+    )
+    .await;
+
+    let advertised_addr = address_book.lock().unwrap().local_listener_socket_addr();
+    assert_ne!(
+        advertised_addr, reserved_listen_addr,
+        "the address book advertises the public listener only"
+    );
+
+    let _reserved_peer = connect_isolated_tcp_direct_with_inbound(
+        &Mainnet,
+        reserved_listen_addr,
+        "Test peer user agent".to_string(),
+        peers_inbound_service,
+    )
+    .await
+    .expect("the reserved listener completes a handshake");
+
+    // Only the reserved peer can answer: the public listener has no connection.
+    let response = tokio::time::timeout(
+        PEER_SET_BAN_TEST_TIMEOUT,
+        peer_set
+            .ready()
+            .await
+            .expect("peer set buffer is ready")
+            .call(Request::Peers),
+    )
+    .await;
+    assert!(
+        matches!(response, Ok(Ok(Response::Peers(_)))),
+        "the reserved peer joins the peer set and answers requests: {response:?}"
+    );
 }

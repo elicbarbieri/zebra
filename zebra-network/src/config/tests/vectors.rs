@@ -1,5 +1,7 @@
 //! Fixed test vectors for zebra-network configuration.
 
+use std::num::NonZeroUsize;
+
 use static_assertions::const_assert;
 use zebra_chain::{
     block::Height,
@@ -13,7 +15,7 @@ use zebra_chain::{
 
 use crate::{
     constants::{INBOUND_PEER_LIMIT_MULTIPLIER, OUTBOUND_PEER_LIMIT_MULTIPLIER},
-    Config,
+    Config, ReservedListener,
 };
 
 #[test]
@@ -673,4 +675,70 @@ async fn regtest_skips_public_seed_resolution() {
         .await
         .unwrap();
     assert_eq!(peers, ["127.0.0.1:18233".parse().unwrap()].into());
+}
+
+#[test]
+fn reserved_listener_parses_validates_and_widens_the_total_limit() {
+    let _init_guard = zebra_test::init();
+
+    let default_config = Config::default();
+    assert_eq!(default_config.reserved_inbound_connection_limit(), 0);
+    assert!(
+        !toml::to_string(&default_config)
+            .unwrap()
+            .contains("reserved_listener"),
+        "an unset reserved listener must stay out of generated configs"
+    );
+
+    // public inbound limit = 2 * INBOUND_PEER_LIMIT_MULTIPLIER = 10 = the largest accepted slots
+    let config: Config = toml::from_str(
+        "peerset_initial_target_size = 2
+
+         [reserved_listener]
+         listen_addr = '[::ffff:127.0.0.1]:8234'
+         slots = 10",
+    )
+    .expect("slots equal to the public inbound limit are valid");
+
+    assert_eq!(
+        config.reserved_listener,
+        Some(ReservedListener {
+            listen_addr: "127.0.0.1:8234".parse().unwrap(),
+            slots: NonZeroUsize::new(10).unwrap(),
+        }),
+        "IPv4-mapped listen addresses are canonicalized like `listen_addr`"
+    );
+    assert_eq!(
+        config.peerset_total_connection_limit(),
+        config.peerset_outbound_connection_limit() + config.peerset_inbound_connection_limit() + 10,
+    );
+    assert_eq!(
+        toml::from_str::<Config>(&toml::to_string(&config).unwrap()).unwrap(),
+        config
+    );
+
+    // default peerset_initial_target_size = 25 → public inbound limit = 125
+    let rejected = [
+        ("listen_addr = '[::]:8234'\nslots = 0", "nonzero"),
+        (
+            "listen_addr = '[::]:8234'\nslots = 126",
+            "slots = 126 exceeds the public inbound limit of 125",
+        ),
+        ("listen_addr = '[::]'\nslots = 1", "invalid socket address"),
+        ("slots = 1", "missing field `listen_addr`"),
+        ("listen_addr = '[::]:8234'", "missing field `slots`"),
+        (
+            "listen_addr = '[::]:8234'\nslots = 1\nnetworks = []",
+            "unknown field `networks`",
+        ),
+    ];
+    for (listener, expected) in rejected {
+        let toml = format!("[reserved_listener]\n{listener}");
+        let err = toml::from_str::<Config>(&toml).expect_err(&toml);
+
+        assert!(
+            err.to_string().contains(expected),
+            "config:\n{toml}\nexpected error containing `{expected}`, got: {err}"
+        );
+    }
 }

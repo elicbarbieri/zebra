@@ -152,6 +152,7 @@ where
     C: ChainTip + Clone + Send + Sync + 'static,
 {
     let (tcp_listener, listen_addr) = open_listener(&config.clone()).await;
+    let reserved_tcp_listener = open_reserved_listener(&config).await;
 
     let (
         address_book,
@@ -285,17 +286,17 @@ where
 
     // Connect peerset_tx to the 3 peer sources:
     //
-    // 1. Incoming peer connections, via a listener.
-    let listen_fut = accept_inbound_connections(
-        config.clone(),
+    // 1. Incoming peer connections, via the listeners.
+    let listen_guards = spawn_inbound_listeners(
+        &config,
         tcp_listener,
+        reserved_tcp_listener,
         constants::MIN_INBOUND_PEER_CONNECTION_INTERVAL,
         listen_handshaker,
         peerset_tx.clone(),
         bans_receiver,
         block_gossip_peer_ips,
     );
-    let listen_guard = tokio::spawn(listen_fut.in_current_span());
 
     // 2. Initial peers, specified in the config and cached on disk.
     let initial_peers_fut = add_initial_peers(
@@ -359,12 +360,16 @@ where
     let peer_cache_updater_guard = tokio::spawn(peer_cache_updater_fut.in_current_span());
 
     handle_tx
-        .send(vec![
-            listen_guard,
-            crawl_guard,
-            address_book_updater_guard,
-            peer_cache_updater_guard,
-        ])
+        .send(
+            listen_guards
+                .into_iter()
+                .chain([
+                    crawl_guard,
+                    address_book_updater_guard,
+                    peer_cache_updater_guard,
+                ])
+                .collect(),
+        )
         .unwrap();
 
     (peer_set, address_book, misbehavior_tx)
@@ -634,19 +639,34 @@ pub(crate) async fn open_listener(config: &Config) -> (TcpListener, SocketAddr) 
         );
     }
 
-    info!(
-        "Trying to open Zcash protocol endpoint at {}...",
-        config.listen_addr
-    );
-    let listener_result = TcpListener::bind(config.listen_addr).await;
+    bind_listener(config.listen_addr, "listen_addr").await
+}
 
-    let listener = match listener_result {
+/// Opens [`Config::reserved_listener`], if configured.
+///
+/// # Panics
+///
+/// If opening the listener fails.
+pub(crate) async fn open_reserved_listener(config: &Config) -> Option<TcpListener> {
+    let reserved_listener = config.reserved_listener?;
+    let (listener, _) = bind_listener(
+        reserved_listener.listen_addr,
+        "reserved_listener.listen_addr",
+    )
+    .await;
+
+    Some(listener)
+}
+
+/// `config_field` names the address in the panic hint
+async fn bind_listener(addr: SocketAddr, config_field: &str) -> (TcpListener, SocketAddr) {
+    info!("Trying to open Zcash protocol endpoint at {addr}...");
+    let listener = match TcpListener::bind(addr).await {
         Ok(l) => l,
         Err(e) => panic!(
-            "Opening Zcash network protocol listener {:?} failed: {e:?}. \
+            "Opening Zcash network protocol listener {addr:?} failed: {e:?}. \
              Hint: Check if another zebrad or zcashd process is running. \
-             Try changing the network listen_addr in the Zebra config.",
-            config.listen_addr,
+             Try changing the network {config_field} in the Zebra config.",
         ),
     };
 
@@ -658,18 +678,72 @@ pub(crate) async fn open_listener(config: &Config) -> (TcpListener, SocketAddr) 
     (listener, local_addr)
 }
 
+/// Spawns [`accept_inbound_connections`] for the public listener and, if configured, the
+/// reserved listener, each limited to its own inbound slots.
+#[allow(clippy::too_many_arguments)]
+fn spawn_inbound_listeners<S>(
+    config: &Config,
+    listener: TcpListener,
+    reserved_listener: Option<TcpListener>,
+    min_inbound_peer_connection_interval: Duration,
+    handshaker: S,
+    peerset_tx: futures::channel::mpsc::Sender<DiscoveredPeer>,
+    bans_receiver: watch::Receiver<BanList>,
+    zcashd_compat_peer_ips: Vec<IpAddr>,
+) -> Vec<tokio::task::JoinHandle<Result<(), BoxError>>>
+where
+    S: Service<peer::HandshakeRequest<TcpStream>, Response = peer::Client, Error = BoxError>
+        + Clone
+        + Send
+        + 'static,
+    S::Future: Send + 'static,
+{
+    let public = (
+        listener,
+        config.peerset_inbound_connection_limit(),
+        zcashd_compat_peer_ips,
+    );
+    let reserved = reserved_listener.map(|listener| {
+        (
+            listener,
+            config.reserved_inbound_connection_limit(),
+            Vec::new(),
+        )
+    });
+
+    [Some(public), reserved]
+        .into_iter()
+        .flatten()
+        .map(|(listener, inbound_limit, zcashd_compat_peer_ips)| {
+            let accept = accept_inbound_connections(
+                config.clone(),
+                listener,
+                inbound_limit,
+                min_inbound_peer_connection_interval,
+                handshaker.clone(),
+                peerset_tx.clone(),
+                bans_receiver.clone(),
+                zcashd_compat_peer_ips,
+            );
+            tokio::spawn(accept.in_current_span())
+        })
+        .collect()
+}
+
 /// Listens for peer connections on `addr`, then sets up each connection as a
 /// Zcash peer.
 ///
 /// Uses `handshaker` to perform a Zcash network protocol handshake, and sends
 /// the [`peer::Client`] result over `peerset_tx`.
 ///
-/// Limits the number of active inbound connections based on `config`,
+/// Limits the number of active inbound connections to `inbound_limit`,
 /// and waits `min_inbound_peer_connection_interval` between connections.
+#[allow(clippy::too_many_arguments)]
 #[instrument(skip(config, listener, handshaker, peerset_tx), fields(listener_addr = ?listener.local_addr()))]
 async fn accept_inbound_connections<S>(
     config: Config,
     listener: TcpListener,
+    inbound_limit: usize,
     min_inbound_peer_connection_interval: Duration,
     handshaker: S,
     peerset_tx: futures::channel::mpsc::Sender<DiscoveredPeer>,
@@ -685,8 +759,8 @@ where
         recent_by_ip::RecentByIp::new(None, Some(config.max_connections_per_ip));
 
     let mut active_inbound_connections = ActiveConnectionCounter::new_counter_with(
-        config.peerset_inbound_connection_limit(),
-        "Inbound Connections",
+        inbound_limit,
+        format!("Inbound Connections on {:?}", listener.local_addr()),
     );
     let zcashd_compat_peer_ips: HashSet<_> = zcashd_compat_peer_ips
         .into_iter()
@@ -700,14 +774,13 @@ where
     // lock the real sidecar out of the node.
     let zcashd_compat_reserved_slots = zcashd_compat_peer_ips
         .len()
-        .min(config.peerset_inbound_connection_limit().saturating_sub(1));
+        .min(inbound_limit.saturating_sub(1));
     let mut active_zcashd_compat_connections = ActiveConnectionCounter::new_counter_with(
         zcashd_compat_reserved_slots,
         "zcashd-compat Inbound Connections",
     );
-    let public_inbound_connection_limit = config
-        .peerset_inbound_connection_limit()
-        .saturating_sub(zcashd_compat_reserved_slots);
+    let public_inbound_connection_limit =
+        inbound_limit.saturating_sub(zcashd_compat_reserved_slots);
 
     let mut handshakes: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + Send>>> =
         FuturesUnordered::new();
@@ -771,12 +844,12 @@ where
             // sidecar rather than locking it out.
             let use_reserved_slot = is_zcashd_compat_peer
                 && active_zcashd_compat_inbound_connections < zcashd_compat_reserved_slots
-                && active_total_inbound_connections < config.peerset_inbound_connection_limit();
+                && active_total_inbound_connections < inbound_limit;
 
             let connection_tracker = if use_reserved_slot {
                 active_zcashd_compat_connections.track_connection()
             } else if active_public_inbound_connections >= public_inbound_connection_limit
-                || active_total_inbound_connections >= config.peerset_inbound_connection_limit()
+                || active_total_inbound_connections >= inbound_limit
                 || recent_inbound_connections.is_past_limit_or_add(addr.ip())
             {
                 // Too many open inbound connections or pending handshakes already.

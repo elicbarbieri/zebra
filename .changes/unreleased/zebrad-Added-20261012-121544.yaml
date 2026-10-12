@@ -1,0 +1,4 @@
+project: zebrad
+kind: Added
+body: 'Added `[network.reserved_listener]`: a second P2P listener (`listen_addr`, `slots`) whose inbound slots public peers cannot take, so an operator''s own nodes always get a connection. It is never advertised; restrict who can reach it (e.g. a VPN interface).'
+time: 2026-10-12T12:15:44.53574602-07:00
