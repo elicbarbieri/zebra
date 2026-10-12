@@ -200,6 +200,13 @@ impl From<Vec<u8>> for SerializedBlock {
     }
 }
 
+/// Take the serialized bytes of a [`SerializedBlock`] without copying them.
+impl From<SerializedBlock> for Vec<u8> {
+    fn from(block: SerializedBlock) -> Self {
+        block.bytes
+    }
+}
+
 impl FromHex for SerializedBlock {
     type Error = FromHexError;
 

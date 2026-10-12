@@ -13,8 +13,8 @@ use zebra_node_services::mempool::MempoolChangeKind;
 use zebra_state::{ReadRequest, ReadResponse, ReadState, MAX_NON_FINALIZED_CHAIN_FORKS};
 
 use super::{
-    indexer_server::Indexer, server::IndexerRPC, BlockAndHash, BlockHashAndHeight, BlockRequest,
-    Empty, MempoolChangeMessage, NonFinalizedStateChangeRequest,
+    indexer_server::Indexer, server::IndexerRPC, BlockAndHash, BlockHashAndHeight,
+    BlockRangeRequest, BlockRequest, Empty, MempoolChangeMessage, NonFinalizedStateChangeRequest,
 };
 
 /// The maximum number of messages that can be queued to be streamed to a client.
@@ -40,6 +40,7 @@ where
         Pin<Box<dyn Stream<Item = Result<BlockAndHash, Status>> + Send>>;
     type MempoolChangeStream =
         Pin<Box<dyn Stream<Item = Result<MempoolChangeMessage, Status>> + Send>>;
+    type GetBlockRangeStream = Pin<Box<dyn Stream<Item = Result<BlockAndHash, Status>> + Send>>;
 
     async fn chain_tip_change(
         &self,
@@ -265,21 +266,92 @@ where
             }
         };
 
-        match self
-            .read_state
-            .clone()
-            .oneshot(ReadRequest::Block(hash_or_height))
-            .await
-        {
-            Ok(ReadResponse::Block(Some(block))) => {
-                Ok(Response::new(BlockAndHash::new(block.hash(), block)))
-            }
-            Ok(ReadResponse::Block(None)) => Err(Status::not_found("block not found")),
-            Ok(_) => unreachable!("unexpected response type from ReadStateService"),
-            Err(error) => Err(Status::unavailable(format!(
-                "failed to read block: {error}"
-            ))),
+        match read_raw_block(self.read_state.clone(), hash_or_height).await? {
+            Some(block) => Ok(Response::new(block)),
+            None => Err(Status::not_found("block not found")),
         }
+    }
+
+    async fn get_block_range(
+        &self,
+        request: tonic::Request<BlockRangeRequest>,
+    ) -> Result<Response<Self::GetBlockRangeStream>, Status> {
+        let span = Span::current();
+        let BlockRangeRequest { start, end } = request.into_inner();
+        let height = |height: u32| {
+            block::Height::try_from(height).map_err(|_| {
+                Status::invalid_argument(format!("block height out of range: {height}"))
+            })
+        };
+        let (start, end) = (height(start)?, height(end)?);
+        if start > end {
+            return Err(Status::invalid_argument(format!(
+                "block range start {start:?} is above its end {end:?}"
+            )));
+        }
+
+        let read_state = self.read_state.clone();
+        let (response_sender, response_receiver) = tokio::sync::mpsc::channel(RESPONSE_BUFFER_SIZE);
+        let response_stream = ReceiverStream::new(response_receiver);
+
+        tokio::spawn(async move {
+            for height in start.0..=end.0 {
+                let hash_or_height = zebra_state::HashOrHeight::Height(block::Height(height));
+                let next = match read_raw_block(read_state.clone(), hash_or_height).await {
+                    Ok(Some(block)) => Ok(block),
+                    Ok(None) => Err(Status::not_found(format!(
+                        "no block at height {height}: above the best tip"
+                    ))),
+                    Err(status) => Err(status),
+                };
+                let ended = next.is_err();
+
+                let send = response_sender.send(next);
+                match tokio::time::timeout(SEND_TIMEOUT, send).await {
+                    Ok(Ok(())) if !ended => {}
+                    Ok(Ok(())) => return,
+                    Ok(Err(_)) => {
+                        span.in_scope(|| {
+                            tracing::debug!("client disconnected, dropping get_block_range task");
+                        });
+                        return;
+                    }
+                    Err(_) => {
+                        span.in_scope(|| {
+                            tracing::warn!(
+                                "slow consumer, dropping get_block_range stream after send \
+                                 timed out"
+                            );
+                        });
+                        return;
+                    }
+                }
+            }
+        });
+
+        Ok(Response::new(Box::pin(response_stream)))
+    }
+}
+
+/// Reads a best-chain block as its stored bytes, hashing only its header.
+///
+/// Returns `Ok(None)` if the block is not in the best chain.
+async fn read_raw_block<ReadStateService: ReadState>(
+    read_state: ReadStateService,
+    hash_or_height: zebra_state::HashOrHeight,
+) -> Result<Option<BlockAndHash>, Status> {
+    match read_state
+        .oneshot(ReadRequest::RawBlock(hash_or_height))
+        .await
+    {
+        Ok(ReadResponse::RawBlock(Some(block))) => BlockAndHash::from_serialized(block)
+            .map(Some)
+            .map_err(|error| Status::internal(format!("stored block header: {error}"))),
+        Ok(ReadResponse::RawBlock(None)) => Ok(None),
+        Ok(_) => unreachable!("unexpected response type from ReadStateService"),
+        Err(error) => Err(Status::unavailable(format!(
+            "failed to read block: {error}"
+        ))),
     }
 }
 

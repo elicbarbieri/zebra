@@ -57,6 +57,23 @@ impl BlockAndHash {
         }
     }
 
+    /// Creates a new [`BlockAndHash`] from a block's stored bytes, hashing its header.
+    ///
+    /// Only the header is parsed: the transactions are passed through as stored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bytes do not start with a valid block header.
+    pub fn from_serialized(
+        block: block::SerializedBlock,
+    ) -> Result<Self, zebra_chain::serialization::SerializationError> {
+        let header: block::Header = block.as_ref().zcash_deserialize_into()?;
+        Ok(BlockAndHash {
+            hash: header.hash().bytes_in_display_order().to_vec(),
+            data: block.into(),
+        })
+    }
+
     /// Try to convert a [`BlockAndHash`] into a tuple of a decoded block and hash.
     pub fn decode(self) -> Option<(block::Block, block::Hash)> {
         self.hash

@@ -6,7 +6,7 @@ use futures::StreamExt;
 use tokio::{sync::broadcast, task::JoinHandle};
 use tower::BoxError;
 use zebra_chain::{
-    block::{Block, Height},
+    block::{Block, Height, SerializedBlock},
     chain_tip::mock::{MockChainTip, MockChainTipSender},
     serialization::ZcashDeserializeInto,
     transaction::{self, UnminedTxId},
@@ -19,7 +19,8 @@ use zebra_test::{
 };
 
 use crate::indexer::{
-    self, indexer_client::IndexerClient, BlockRequest, Empty, NonFinalizedStateChangeRequest,
+    self, indexer_client::IndexerClient, BlockRangeRequest, BlockRequest, Empty,
+    NonFinalizedStateChangeRequest,
 };
 
 #[tokio::test]
@@ -37,6 +38,7 @@ async fn rpc_server_spawn() -> Result<()> {
     test_chain_tip_change(client.clone(), mock_chain_tip_sender).await?;
     test_mempool_change(client.clone(), mempool_transaction_sender).await?;
     test_get_block(client.clone(), mock_read_service.clone()).await?;
+    test_get_block_range(client.clone(), mock_read_service.clone()).await?;
     test_non_finalized_state_change(client.clone(), mock_read_service).await?;
 
     Ok(())
@@ -159,17 +161,89 @@ async fn test_get_block(
     });
 
     mock_read_service
-        .expect_request(ReadRequest::Block(HashOrHeight::Height(height)))
+        .expect_request(ReadRequest::RawBlock(HashOrHeight::Height(height)))
         .await
-        .respond(ReadResponse::Block(Some(block.clone())));
+        .respond(ReadResponse::RawBlock(Some(SerializedBlock::from(
+            zebra_test::vectors::BLOCK_MAINNET_1_BYTES.to_vec(),
+        ))));
 
     let response = request_task
         .await?
         .expect("get_block should succeed")
         .into_inner();
+    assert_eq!(
+        response.data,
+        zebra_test::vectors::BLOCK_MAINNET_1_BYTES.to_vec(),
+        "the block is served as stored"
+    );
     let (decoded_block, decoded_hash) = response.decode().expect("response should decode");
     assert_eq!(decoded_hash, expected_hash);
     assert_eq!(decoded_block.hash(), expected_hash);
+
+    Ok(())
+}
+
+/// Tests that `GetBlockRange` streams the stored bytes of each block in the range, in height
+/// order, ends with `NOT_FOUND` at the first height above the tip, and rejects an inverted range.
+async fn test_get_block_range(
+    mut client: IndexerClient<tonic::transport::Channel>,
+    mut mock_read_service: MockService<ReadRequest, ReadResponse, PanicAssertion, BoxError>,
+) -> Result<()> {
+    let status = client
+        .get_block_range(tonic::Request::new(BlockRangeRequest { start: 2, end: 1 }))
+        .await
+        .expect_err("a range whose start is above its end should be rejected");
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+
+    let stored = [
+        &zebra_test::vectors::BLOCK_MAINNET_1_BYTES[..],
+        &zebra_test::vectors::BLOCK_MAINNET_2_BYTES[..],
+    ];
+    let mut request_client = client.clone();
+    let request_task = tokio::spawn(async move {
+        request_client
+            .get_block_range(tonic::Request::new(BlockRangeRequest { start: 1, end: 3 }))
+            .await
+    });
+
+    for (height, bytes) in (1..).zip(stored) {
+        mock_read_service
+            .expect_request(ReadRequest::RawBlock(HashOrHeight::Height(Height(height))))
+            .await
+            .respond(ReadResponse::RawBlock(Some(SerializedBlock::from(
+                bytes.to_vec(),
+            ))));
+    }
+    mock_read_service
+        .expect_request(ReadRequest::RawBlock(HashOrHeight::Height(Height(3))))
+        .await
+        .respond(ReadResponse::RawBlock(None));
+
+    let mut response = request_task
+        .await?
+        .expect("get_block_range should succeed")
+        .into_inner();
+    for bytes in stored {
+        let message = tokio::time::timeout(Duration::from_secs(3), response.next())
+            .await
+            .expect("should receive a block before timeout")
+            .expect("response stream should not end before the tip")
+            .expect("a block below the tip should not be an error message");
+        assert_eq!(
+            message.data,
+            bytes.to_vec(),
+            "the block is served as stored"
+        );
+        let block: Arc<Block> = bytes.zcash_deserialize_into()?;
+        let (_, hash) = message.decode().expect("response should decode");
+        assert_eq!(hash, block.hash());
+    }
+    let above_tip = tokio::time::timeout(Duration::from_secs(3), response.next())
+        .await
+        .expect("should receive the end of the range before timeout")
+        .expect("the stream should report the height above the tip")
+        .expect_err("a height above the tip should end the stream with an error");
+    assert_eq!(above_tip.code(), tonic::Code::NotFound);
 
     Ok(())
 }

@@ -1,0 +1,4 @@
+project: zebra-chain
+kind: Added
+body: '`impl From<SerializedBlock> for Vec<u8>`: take a serialized block''s bytes without copying them.'
+time: 2026-10-12T19:00:00.000000000Z
