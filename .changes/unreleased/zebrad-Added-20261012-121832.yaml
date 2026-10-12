@@ -1,0 +1,4 @@
+project: zebrad
+kind: Added
+body: 'Added journald-native stdout logs: under systemd (`$JOURNAL_STREAM` matching stdout) each line drops its timestamp and starts with its syslog priority (`<N>`), so `journalctl -p` filters by level.'
+time: 2026-10-12T12:18:32.640930166-07:00

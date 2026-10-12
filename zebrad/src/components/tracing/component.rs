@@ -22,6 +22,8 @@ use zebra_chain::parameters::Network;
 
 use crate::{application::build_version, components::tracing::Config};
 
+use super::journal::EventFormat;
+
 #[cfg(feature = "flamegraph")]
 use super::flame;
 
@@ -54,12 +56,8 @@ pub struct Tracing {
     /// The installed filter reloading handle, if enabled.
     //
     // TODO: when fmt::Subscriber supports per-layer filtering, remove the Option
-    filter_handle: Option<
-        Handle<
-            EnvFilter,
-            Formatter<format::DefaultFields, format::Format<format::Full>, NonBlocking>,
-        >,
-    >,
+    filter_handle:
+        Option<Handle<EnvFilter, Formatter<format::DefaultFields, EventFormat, NonBlocking>>>,
 
     /// The originally configured filter.
     initial_filter: String,
@@ -168,6 +166,8 @@ impl Tracing {
             .buffered_lines_limit(config.buffer_limit.max(100))
             .finish(writer);
 
+        let event_format = EventFormat::detect(config.log_file.is_none());
+
         // Construct a format subscriber with the supplied global logging filter,
         // and optionally enable reloading.
         //
@@ -179,6 +179,7 @@ impl Tracing {
             let logger = FmtSubscriber::builder()
                 .with_ansi(use_color)
                 .with_writer(non_blocking)
+                .event_format(event_format)
                 .with_env_filter(&filter);
 
             // Enable reloading if that feature is selected.
@@ -222,6 +223,7 @@ impl Tracing {
             let logger = fmt::Layer::new()
                 .with_ansi(use_color)
                 .with_writer(non_blocking)
+                .event_format(event_format)
                 .with_filter(EnvFilter::from(&filter));
 
             let subscriber = subscriber.with(logger);
