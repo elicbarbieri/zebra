@@ -21,8 +21,10 @@ use zebra_chain::{
 };
 use zebra_consensus::{error::TransactionError, router::RouterError, transaction};
 use zebra_network::{
-    canonical_peer_addr, connect_isolated_tcp_direct_with_inbound, types::InventoryHash, CacheDir,
-    Config as NetworkConfig, InventoryResponse, PeerError, Request, Response, SharedPeerError,
+    canonical_peer_addr, connect_isolated_tcp_direct_with_inbound,
+    types::{InventoryHash, PeerServices},
+    CacheDir, Config as NetworkConfig, InventoryResponse, PeerError, Request, Response,
+    SharedPeerError,
 };
 use zebra_node_services::mempool;
 use zebra_rpc::SubmitBlockChannel;
@@ -678,6 +680,7 @@ async fn setup(
         inbound_service.clone(),
         latest_chain_tip.clone(),
         "Zebra user agent".to_string(),
+        PeerServices::NODE_NETWORK,
     )
     .await;
 
@@ -883,6 +886,7 @@ mod submitblock_test {
             inbound_service.clone(),
             latest_chain_tip.clone(),
             "Zebra user agent".to_string(),
+            PeerServices::NODE_NETWORK,
         )
         .await;
 

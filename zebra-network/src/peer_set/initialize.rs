@@ -55,6 +55,7 @@ use crate::{
         ActiveConnectionCounter, ConnectionTracker, CrawlService, NextPeerService, PeerSet,
     },
     protocol::external::{canonical_peer_addr, canonical_socket_addr},
+    types::PeerServices,
     AddressBook, BanList, BoxError, Config, PeerSocketAddr, Request, Response,
 };
 
@@ -93,6 +94,9 @@ type DiscoveredPeer = (PeerSocketAddr, peer::Client);
 ///
 /// Use [`NoChainTip`][1] to explicitly provide no chain tip receiver.
 ///
+/// - `advertised_services` = our handshakes' + gossiped listener's (zebrad: `NODE_NETWORK`; a
+///   node serving no blocks: `PeerServices::empty()`)
+///
 /// In addition to returning a service for outbound requests, this method
 /// returns a shared [`AddressBook`] updated with last-seen timestamps for
 /// connected peers. The shared address book should be accessed using a
@@ -110,6 +114,7 @@ pub async fn init<S, C>(
     inbound_service: S,
     latest_chain_tip: C,
     user_agent: String,
+    advertised_services: PeerServices,
 ) -> (
     Buffer<BoxService<Request, Response, BoxError>, Request>,
     Arc<std::sync::Mutex<AddressBook>>,
@@ -125,6 +130,7 @@ where
         inbound_service,
         latest_chain_tip,
         user_agent,
+        advertised_services,
         Vec::new(),
         None,
     )
@@ -146,6 +152,7 @@ pub async fn init_with_block_gossip_peer_ips<S, C>(
     inbound_service: S,
     latest_chain_tip: C,
     user_agent: String,
+    advertised_services: PeerServices,
     block_gossip_peer_ips: Vec<IpAddr>,
     max_checkpoint_height: Option<block::Height>,
 ) -> (
@@ -167,7 +174,7 @@ where
         address_book_service,
         address_metrics,
         address_book_updater_guard,
-    ) = AddressBookUpdater::spawn(&config, listen_addr);
+    ) = AddressBookUpdater::spawn(&config, listen_addr, advertised_services);
 
     let (misbehavior_tx, mut misbehavior_rx) = mpsc::channel(
         // Leave enough room for a misbehaviour update on every peer connection
@@ -227,13 +234,12 @@ where
     let (listen_handshaker, outbound_connector) = {
         use tower::timeout::TimeoutLayer;
         let hs_timeout = TimeoutLayer::new(constants::HANDSHAKE_TIMEOUT);
-        use crate::protocol::external::types::PeerServices;
         let hs = peer::Handshake::builder()
             .with_config(config.clone())
             .with_inbound_service(inbound_service)
             .with_inventory_collector(inv_sender)
             .with_address_book_updater(address_book_updater.clone())
-            .with_advertised_services(PeerServices::NODE_NETWORK)
+            .with_advertised_services(advertised_services)
             .with_user_agent(user_agent)
             .with_latest_chain_tip(latest_chain_tip.clone())
             .with_max_checkpoint_height(max_checkpoint_height)
