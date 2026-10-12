@@ -4,6 +4,7 @@ use std::{
     collections::HashSet,
     io::{self, ErrorKind},
     net::{IpAddr, SocketAddr},
+    num::NonZeroUsize,
     sync::Arc,
     time::Duration,
 };
@@ -197,6 +198,36 @@ pub struct Config {
     /// after the handshake, but before adding them to the peer set. The total numbers of inbound and
     /// outbound connections are also limited to a multiple of `peerset_initial_target_size`.
     pub max_connections_per_ip: usize,
+
+    /// A second listener whose inbound connections use their own slots, on top of the
+    /// public inbound limit:
+    ///
+    /// ```toml
+    /// [network.reserved_listener]
+    /// listen_addr = "[::]:8234"
+    /// slots = 8
+    /// ```
+    ///
+    /// Use it to guarantee your own nodes a connection when public peers have taken every
+    /// public slot. When its `slots` are full, further connections to it are dropped.
+    /// Bans, rate limits and `max_connections_per_ip` still apply. Zebra never
+    /// advertises this address.
+    ///
+    /// `slots` must not exceed the public inbound limit (`peerset_initial_target_size` * 5).
+    ///
+    /// # Security
+    ///
+    /// Zebra admits any peer that reaches this address. Restrict who can reach it, for
+    /// example by binding it to a VPN address or allowing its port only on a VPN interface.
+    pub reserved_listener: Option<ReservedListener>,
+}
+
+/// `[network.reserved_listener]`: see [`Config::reserved_listener`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReservedListener {
+    pub(crate) listen_addr: SocketAddr,
+    pub(crate) slots: NonZeroUsize,
 }
 
 impl Config {
@@ -238,10 +269,18 @@ impl Config {
         self.peerset_initial_target_size * INBOUND_PEER_LIMIT_MULTIPLIER
     }
 
+    /// The maximum number of inbound connections on [`Config::reserved_listener`].
+    pub fn reserved_inbound_connection_limit(&self) -> usize {
+        self.reserved_listener
+            .map_or(0, |reserved_listener| reserved_listener.slots.get())
+    }
+
     /// The maximum number of inbound and outbound connections that Zebra will have
     /// at the same time.
     pub fn peerset_total_connection_limit(&self) -> usize {
-        self.peerset_outbound_connection_limit() + self.peerset_inbound_connection_limit()
+        self.peerset_outbound_connection_limit()
+            + self.peerset_inbound_connection_limit()
+            + self.reserved_inbound_connection_limit()
     }
 
     /// Returns the initial seed peer hostnames for the configured network.
@@ -589,6 +628,7 @@ impl Default for Config {
             // so that idle peers don't use too many connection slots.
             peerset_initial_target_size: DEFAULT_PEERSET_INITIAL_TARGET_SIZE,
             max_connections_per_ip: DEFAULT_MAX_CONNS_PER_IP,
+            reserved_listener: None,
         }
     }
 }
@@ -660,6 +700,7 @@ struct DConfig {
     #[serde(alias = "new_peer_interval", with = "humantime_serde")]
     crawl_new_peer_interval: Duration,
     max_connections_per_ip: Option<usize>,
+    reserved_listener: Option<ReservedListener>,
 }
 
 impl Default for DConfig {
@@ -676,6 +717,7 @@ impl Default for DConfig {
             peerset_initial_target_size: config.peerset_initial_target_size,
             crawl_new_peer_interval: config.crawl_new_peer_interval,
             max_connections_per_ip: Some(config.max_connections_per_ip),
+            reserved_listener: config.reserved_listener,
         }
     }
 }
@@ -734,6 +776,7 @@ impl From<Config> for DConfig {
             peerset_initial_target_size,
             crawl_new_peer_interval,
             max_connections_per_ip,
+            reserved_listener,
         }: Config,
     ) -> Self {
         let dnetwork = match network.kind() {
@@ -768,6 +811,7 @@ impl From<Config> for DConfig {
             peerset_initial_target_size,
             crawl_new_peer_interval,
             max_connections_per_ip: Some(max_connections_per_ip),
+            reserved_listener,
         }
     }
 }
@@ -788,6 +832,7 @@ impl<'de> Deserialize<'de> for Config {
             peerset_initial_target_size,
             crawl_new_peer_interval,
             max_connections_per_ip,
+            reserved_listener,
         } = DConfig::deserialize(deserializer)?;
 
         let network = match (dnetwork, testnet_parameters) {
@@ -853,7 +898,7 @@ impl<'de> Deserialize<'de> for Config {
             non_zero_config_field.filter(|config_value| config_value > &0).unwrap_or(default_config_value)
         });
 
-        Ok(Config {
+        let config = Config {
             listen_addr: canonical_socket_addr(listen_addr),
             external_addr: external_socket_addr,
             network,
@@ -863,7 +908,25 @@ impl<'de> Deserialize<'de> for Config {
             peerset_initial_target_size,
             crawl_new_peer_interval,
             max_connections_per_ip,
-        })
+            reserved_listener: reserved_listener.map(|reserved_listener| ReservedListener {
+                listen_addr: canonical_socket_addr(reserved_listener.listen_addr),
+                ..reserved_listener
+            }),
+        };
+
+        // Bounds `peerset_total_connection_limit()` (sizes preallocated peer set channels)
+        let (reserved, public) = (
+            config.reserved_inbound_connection_limit(),
+            config.peerset_inbound_connection_limit(),
+        );
+        if reserved > public {
+            return Err(de::Error::custom(format!(
+                "reserved_listener.slots = {reserved} exceeds the public inbound limit of \
+                 {public} (`peerset_initial_target_size` * {INBOUND_PEER_LIMIT_MULTIPLIER})"
+            )));
+        }
+
+        Ok(config)
     }
 }
 
