@@ -20,7 +20,7 @@ use crate::{
     constants::{self, ADDR_RESPONSE_LIMIT_DENOMINATOR, MAX_ADDRS_IN_MESSAGE},
     meta_addr::MetaAddrChange,
     protocol::external::{canonical_peer_addr, canonical_socket_addr, connection_limit_key},
-    types::MetaAddr,
+    types::{MetaAddr, PeerServices},
     AddressBookPeers, BanList, PeerAddrState, PeerSocketAddr,
 };
 
@@ -86,6 +86,9 @@ pub struct AddressBook {
 
     /// The local listener address.
     local_listener: SocketAddr,
+
+    /// Gossiped with `local_listener` (= the services our handshakes advertise)
+    local_listener_services: PeerServices,
 
     /// The configured Zcash network.
     network: Network,
@@ -160,6 +163,7 @@ impl AddressBook {
         let mut new_book = AddressBook {
             by_addr: IndexMap::new(),
             local_listener: canonical_socket_addr(local_listener),
+            local_listener_services: PeerServices::NODE_NETWORK,
             network: network.clone(),
             addr_limit: constants::MAX_ADDRS_IN_ADDRESS_BOOK,
             span,
@@ -273,8 +277,17 @@ impl AddressBook {
     pub fn local_listener_meta_addr(&self, now: chrono::DateTime<Utc>) -> MetaAddr {
         let now: DateTime32 = now.try_into().expect("will succeed until 2038");
 
-        MetaAddr::new_local_listener_change(self.local_listener)
+        MetaAddr::new_local_listener_change(self.local_listener, self.local_listener_services)
             .local_listener_into_new_meta_addr(now)
+    }
+
+    /// Services gossiped with our own listener address (default `NODE_NETWORK`)
+    ///
+    /// - must match the services our handshakes advertise
+    #[must_use]
+    pub fn with_local_listener_services(mut self, services: PeerServices) -> Self {
+        self.local_listener_services = services;
+        self
     }
 
     /// Get the local listener [`SocketAddr`].
@@ -957,6 +970,7 @@ impl Clone for AddressBook {
         AddressBook {
             by_addr: self.by_addr.clone(),
             local_listener: self.local_listener,
+            local_listener_services: self.local_listener_services,
             network: self.network.clone(),
             addr_limit: self.addr_limit,
             span: self.span.clone(),

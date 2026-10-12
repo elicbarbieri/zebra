@@ -563,6 +563,7 @@ impl GenesisPeer {
                 inbound_service,
                 NoChainTip,
                 "Genesis test peer".to_string(),
+                zebra_network::types::PeerServices::NODE_NETWORK,
             ));
 
         let listen_addr = address_book
