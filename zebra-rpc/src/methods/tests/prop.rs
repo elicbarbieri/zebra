@@ -148,6 +148,53 @@ proptest! {
         })?;
     }
 
+    /// `checkadmission`: each mempool verdict → its answer, nothing queued
+    ///
+    /// - `Accepted` → the txid; `Rejected` → `-25` (`sendrawtransaction`'s); `Indeterminate` and a
+    ///   mempool error → `-1` (no verdict)
+    #[test]
+    fn check_admission_answers_each_verdict_by_code(transaction in any::<Transaction>(), network in any::<Network>()) {
+        let (runtime, _init_guard) = zebra_test::init_async();
+        let _guard = runtime.enter();
+        let (mut mempool, mut state, rpc, mempool_tx_queue) = mock_services(network, NoChainTip);
+
+        // CORRECTNESS: Nothing in this test depends on real time, so we can speed it up.
+        tokio::time::pause();
+
+        runtime.block_on(async move {
+            let hash = transaction.hash();
+            let transaction_hex = hex::encode(transaction.zcash_serialize_to_vec()?);
+            let unmined = UnminedTx::from(std::sync::Arc::new(transaction));
+            let admission = |admission| Ok::<_, BoxError>(mempool::Response::Admission(admission));
+            let verdicts = [
+                (admission(mempool::Admission::Accepted), None),
+                (admission(mempool::Admission::Rejected("bad-txns".into())), Some(-25)),
+                (admission(mempool::Admission::Indeterminate("timeout".into())), Some(-1)),
+                (Err(BoxError::from("mempool is not active")), Some(-1)),
+            ];
+            for (answer, code) in verdicts {
+                let (rpc, transaction_hex) = (rpc.clone(), transaction_hex.clone());
+                let check_task = tokio::spawn(async move { rpc.check_admission(transaction_hex).await });
+
+                mempool
+                    .expect_request(mempool::Request::CheckAdmission(unmined.clone()))
+                    .await?
+                    .respond(answer);
+
+                let result = check_task.await.expect("check_admission should not panic");
+                match code {
+                    None => prop_assert_eq!(result, Ok(SendRawTransactionResponse(hash))),
+                    Some(code) => check_err_code(result, ErrorCode::ServerError(code))?,
+                }
+            }
+
+            state.expect_no_requests().await?;
+            prop_assert!(mempool_tx_queue.now_or_never().is_none());
+
+            Ok(())
+        })?;
+    }
+
     /// Test that when the mempool rejects a transaction the caller receives an error.
     #[test]
     fn rejected_txs_are_reported(transaction in any::<Transaction>(), network in any::<Network>()) {

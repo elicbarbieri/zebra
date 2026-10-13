@@ -244,7 +244,20 @@ impl Storage {
         }
     }
 
+    /// Maximum allowed size of OP_RETURN scripts, in bytes ([`Self::standard`]'s limit)
+    pub(crate) fn max_datacarrier_bytes(&self) -> u32 {
+        self.max_datacarrier_bytes
+    }
+
     /// Check and reject non-standard transaction.
+    fn reject_if_non_standard_tx(&mut self, tx: &VerifiedUnminedTx) -> Result<(), MempoolError> {
+        match Self::standard(tx, self.max_datacarrier_bytes) {
+            Ok(()) => Ok(()),
+            Err(rejection_error) => self.reject_non_standard(tx, rejection_error),
+        }
+    }
+
+    /// The first standard-transaction rule `tx` breaks (nothing cached: [`Self::insert`] caches)
     ///
     /// Zcashd defines non-consensus standard transaction checks in
     /// <https://github.com/zcash/zcash/blob/v6.11.0/src/policy/policy.cpp#L58-L135>
@@ -255,7 +268,10 @@ impl Storage {
     /// Currently, we implement: per-transaction sigops limit, standard input script checks,
     /// input scriptSig size/push-only checks, standard output script checks (including OP_RETURN
     /// limits), and dust checks.
-    fn reject_if_non_standard_tx(&mut self, tx: &VerifiedUnminedTx) -> Result<(), MempoolError> {
+    pub(crate) fn standard(
+        tx: &VerifiedUnminedTx,
+        max_datacarrier_bytes: u32,
+    ) -> Result<(), NonStandardTransactionError> {
         use zcash_script::script::{self, Evaluable as _};
 
         let transaction = tx.transaction.transaction.as_ref();
@@ -269,15 +285,13 @@ impl Storage {
 
             // Rule: scriptSig size must be within the standard limit.
             if unlock_script.as_raw_bytes().len() > policy::MAX_STANDARD_SCRIPTSIG_SIZE {
-                return self
-                    .reject_non_standard(tx, NonStandardTransactionError::ScriptSigTooLarge);
+                return Err(NonStandardTransactionError::ScriptSigTooLarge);
             }
 
             let code = script::Code(unlock_script.as_raw_bytes().to_vec());
             // Rule: scriptSig must be push-only.
             if !code.is_push_only() {
-                return self
-                    .reject_non_standard(tx, NonStandardTransactionError::ScriptSigNotPushOnly);
+                return Err(NonStandardTransactionError::ScriptSigNotPushOnly);
             }
         }
 
@@ -289,15 +303,13 @@ impl Storage {
                     spent_outputs = spent_outputs.len(),
                     "spent_outputs length mismatch, rejecting as non-standard"
                 );
-                return self
-                    .reject_non_standard(tx, NonStandardTransactionError::NonStandardInputs);
+                return Err(NonStandardTransactionError::NonStandardInputs);
             }
 
             // Rule: all transparent inputs must pass `AreInputsStandard()` checks:
             // https://github.com/zcash/zcash/blob/v6.11.0/src/policy/policy.cpp#L137
             if !policy::are_inputs_standard(transaction, spent_outputs) {
-                return self
-                    .reject_non_standard(tx, NonStandardTransactionError::NonStandardInputs);
+                return Err(NonStandardTransactionError::NonStandardInputs);
             }
 
             // Rule: per-transaction sigops (legacy + P2SH) must not exceed the limit.
@@ -305,13 +317,13 @@ impl Storage {
             // https://github.com/zcash/zcash/blob/v6.11.0/src/main.cpp#L1819
             let total_sigops = tx.block_sigop_count();
             if total_sigops > policy::MAX_STANDARD_TX_SIGOPS {
-                return self.reject_non_standard(tx, NonStandardTransactionError::TooManySigops);
+                return Err(NonStandardTransactionError::TooManySigops);
             }
         } else {
             // No spent outputs available (e.g. shielded-only transaction).
             // Only check legacy sigops.
             if tx.legacy_sigop_count > policy::MAX_STANDARD_TX_SIGOPS {
-                return self.reject_non_standard(tx, NonStandardTransactionError::TooManySigops);
+                return Err(NonStandardTransactionError::TooManySigops);
             }
         }
 
@@ -326,19 +338,13 @@ impl Storage {
             match script_kind {
                 None => {
                     // Rule: output script must be standard (P2PKH/P2SH/P2PK/multisig/OP_RETURN).
-                    return self.reject_non_standard(
-                        tx,
-                        NonStandardTransactionError::ScriptPubKeyNonStandard,
-                    );
+                    return Err(NonStandardTransactionError::ScriptPubKeyNonStandard);
                 }
                 Some(solver::ScriptKind::NullData { .. }) => {
                     // Rule: OP_RETURN script size is limited.
                     // Cast is safe: u32 always fits in usize on 32-bit and 64-bit platforms.
-                    if script_len > self.max_datacarrier_bytes as usize {
-                        return self.reject_non_standard(
-                            tx,
-                            NonStandardTransactionError::DataCarrierTooLarge,
-                        );
+                    if script_len > max_datacarrier_bytes as usize {
+                        return Err(NonStandardTransactionError::DataCarrierTooLarge);
                     }
                     // Rule: count OP_RETURN outputs to enforce the one-output limit.
                     data_out_count += 1;
@@ -349,18 +355,15 @@ impl Storage {
                     // rejection below, but we keep it to distinguish the two error reasons
                     // (ScriptPubKeyNonStandard for >3 keys vs BareMultiSig for valid multisig).
                     if pubkeys.len() > policy::MAX_STANDARD_MULTISIG_PUBKEYS {
-                        return self.reject_non_standard(
-                            tx,
-                            NonStandardTransactionError::ScriptPubKeyNonStandard,
-                        );
+                        return Err(NonStandardTransactionError::ScriptPubKeyNonStandard);
                     }
                     // Rule: bare multisig outputs are non-standard (fIsBareMultisigStd = false).
-                    return self.reject_non_standard(tx, NonStandardTransactionError::BareMultiSig);
+                    return Err(NonStandardTransactionError::BareMultiSig);
                 }
                 Some(_) => {
                     // Rule: non-OP_RETURN outputs must not be dust.
                     if output.is_dust() {
-                        return self.reject_non_standard(tx, NonStandardTransactionError::IsDust);
+                        return Err(NonStandardTransactionError::IsDust);
                     }
                 }
             }
@@ -368,7 +371,7 @@ impl Storage {
 
         // Rule: only one OP_RETURN output is permitted.
         if data_out_count > 1 {
-            return self.reject_non_standard(tx, NonStandardTransactionError::MultiOpReturn);
+            return Err(NonStandardTransactionError::MultiOpReturn);
         }
 
         Ok(())
@@ -920,6 +923,11 @@ impl Storage {
         }
 
         unmined_tx_ids
+    }
+
+    /// `tx` spends an outpoint or reveals a nullifier a mempool transaction already does
+    pub(crate) fn has_spend_conflicts(&self, tx: &UnminedTx) -> bool {
+        self.verified.has_spend_conflicts(tx)
     }
 
     /// Check if transaction should be downloaded and/or verified.

@@ -35,12 +35,12 @@ use zebra_chain::{
     chain_sync_status::ChainSyncStatus,
     chain_tip::ChainTip,
     parameters::{Network, NetworkUpgrade},
-    transaction::UnminedTxId,
+    transaction::{UnminedTx, UnminedTxId},
 };
 use zebra_consensus::{error::TransactionError, transaction};
 use zebra_network::{self as zn, PeerSocketAddr};
 use zebra_node_services::mempool::{
-    CreatedOrSpent, Gossip, MempoolChange, MempoolTxSubscriber, Request, Response,
+    Admission, CreatedOrSpent, Gossip, MempoolChange, MempoolTxSubscriber, Request, Response,
 };
 use zebra_state as zs;
 use zebra_state::{ChainTipChange, TipAction};
@@ -1016,6 +1016,35 @@ impl Service<Request> for Mempool {
                     async move { Ok(Response::Queued(Vec::new())) }.boxed()
                 }
 
+                // `Queue`'s checks without its insert: storage first, then verification
+                Request::CheckAdmission(tx) => {
+                    trace!(txid = %tx.id, "got mempool CheckAdmission request");
+
+                    let refused = match storage.should_download_or_verify(tx.id) {
+                        Err(MempoolError::InMempool) => {
+                            return async move { Ok(Response::Admission(Admission::Accepted)) }
+                                .boxed()
+                        }
+                        Err(refused) => Some(refused),
+                        Ok(()) if storage.has_spend_conflicts(&tx) => {
+                            Some(SameEffectsTipRejectionError::SpendConflict.into())
+                        }
+                        Ok(()) => None,
+                    };
+                    if let Some(refused) = refused {
+                        let rejected = Admission::Rejected(refused.into());
+                        return async move { Ok(Response::Admission(rejected)) }.boxed();
+                    }
+
+                    let state = self.state.clone();
+                    let verifier =
+                        Timeout::new(self.tx_verifier.clone(), TRANSACTION_VERIFY_TIMEOUT);
+                    let max_datacarrier_bytes = storage.max_datacarrier_bytes();
+                    check_admission(state, verifier, tx, max_datacarrier_bytes)
+                        .map(|admission| Ok(Response::Admission(admission)))
+                        .boxed()
+                }
+
                 // Store successfully downloaded and verified transactions in the mempool
                 Request::CheckForVerifiedTransactions => {
                     trace!(?req, "got mempool request");
@@ -1115,7 +1144,7 @@ impl Service<Request> for Mempool {
                         .boxed()
                     }
 
-                    Request::FullTransactions => {
+                    Request::FullTransactions | Request::CheckAdmission(_) => {
                         return async move {
                             Err("mempool is not active: wait for Zebra to sync to the tip".into())
                         }
@@ -1159,6 +1188,60 @@ impl Service<Request> for Mempool {
             }
         }
     }
+}
+
+/// `CheckAdmission` past storage: the verification + standardness `Queue` runs, nothing kept
+///
+/// - verifier timeout / internal failure = `Indeterminate` (no verdict on the transaction)
+/// - generic + boxed here: `Send` proven from the bounds (concrete `Timeout<Buffer>` trips rustc's
+///   higher-ranked `From<BoxError>` check)
+fn check_admission<ZV, ZS>(
+    mut state: ZS,
+    verifier: ZV,
+    tx: UnminedTx,
+    max_datacarrier_bytes: u32,
+) -> futures::future::BoxFuture<'static, Admission>
+where
+    ZV: Service<
+            transaction::MempoolRequest,
+            Response = transaction::MempoolResponse,
+            Error = BoxError,
+        > + Send
+        + Clone
+        + 'static,
+    ZV::Future: Send,
+    ZS: Service<zs::Request, Response = zs::Response, Error = BoxError> + Send + Clone + 'static,
+    ZS::Future: Send,
+{
+    async move {
+        let txid = tx.id;
+        let verified = match downloads::transaction_in_best_chain(&mut state, txid).await {
+            Ok(()) => downloads::verify_for_next_block(state, verifier, tx, None).await,
+            Err(in_state_or_failed) => Err(in_state_or_failed),
+        };
+        let admission = match verified {
+            Ok((verified, _, _)) => match Storage::standard(&verified, max_datacarrier_bytes) {
+                Ok(()) => Admission::Accepted,
+                Err(non_standard) => {
+                    Admission::Rejected(MempoolError::NonStandardTransaction(non_standard).into())
+                }
+            },
+            Err(
+                failed @ TransactionDownloadVerifyError::Invalid {
+                    error: TransactionError::InternalDowncastError(_),
+                    ..
+                },
+            ) => Admission::Indeterminate(failed.into()),
+            Err(refused @ TransactionDownloadVerifyError::Invalid { .. })
+            | Err(refused @ TransactionDownloadVerifyError::InState) => {
+                Admission::Rejected(refused.into())
+            }
+            Err(failed) => Admission::Indeterminate(failed.into()),
+        };
+        debug!(%txid, ?admission, "checked mempool admission");
+        admission
+    }
+    .boxed()
 }
 
 impl Drop for Mempool {

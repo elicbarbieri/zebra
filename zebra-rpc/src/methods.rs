@@ -282,6 +282,29 @@ pub trait Rpc {
         _allow_high_fees: Option<bool>,
     ) -> Result<SendRawTransactionResponse>;
 
+    /// Checks whether the local mempool would admit a signed transaction now, without adding it
+    /// to the mempool or relaying it to peers.
+    /// Returns the [`SentTransactionHash`] for the transaction, as a JSON string.
+    ///
+    /// method: post
+    /// tags: transaction
+    ///
+    /// # Parameters
+    ///
+    /// - `raw_transaction_hex`: (string, required, example="signedhex") The hex-encoded raw transaction bytes.
+    ///
+    /// # Notes
+    ///
+    /// Runs the checks `sendrawtransaction` runs: a refusal is a `Verify` (`-25`) error with the
+    /// same message. A transaction already in the mempool is admissible. A check that fails for a
+    /// reason outside the transaction (the mempool not active, a verifier timeout) is a `Misc`
+    /// (`-1`) error.
+    #[method(name = "checkadmission")]
+    async fn check_admission(
+        &self,
+        raw_transaction_hex: String,
+    ) -> Result<SendRawTransactionResponse>;
+
     /// Returns the requested block by hash or height, as a [`GetBlock`] JSON string.
     /// If the block is not in Zebra's state, returns
     /// [error code `-8`.](https://github.com/zcash/zcash/issues/5758) if a height was
@@ -1455,21 +1478,14 @@ where
         let mempool = self.mempool.clone();
         let queue_sender = self.queue_sender.clone();
 
-        // Reference for the legacy error code:
-        // <https://github.com/zcash/zcash/blob/99ad6fdc3a549ab510422820eea5e5ce9f60a5fd/src/rpc/rawtransaction.cpp#L1259-L1260>
-        let raw_transaction_bytes = Vec::from_hex(raw_transaction_hex)
-            .map_error(server::error::LegacyCode::Deserialization)?;
-        let raw_transaction = Transaction::zcash_deserialize(&*raw_transaction_bytes)
-            .map_error(server::error::LegacyCode::Deserialization)?;
+        let unmined_transaction = decode_unmined_transaction(raw_transaction_hex)?;
 
-        let transaction_hash = raw_transaction.hash();
+        let transaction_hash = unmined_transaction.transaction.hash();
 
         // send transaction to the rpc queue, ignore any error.
-        let raw_transaction = Arc::new(raw_transaction);
-        let unmined_transaction = UnminedTx::from(raw_transaction.clone());
-        let _ = queue_sender.send(unmined_transaction);
+        let _ = queue_sender.send(unmined_transaction.clone());
 
-        let transaction_parameter = mempool::Gossip::Tx(raw_transaction.into());
+        let transaction_parameter = mempool::Gossip::Tx(unmined_transaction);
         let request = mempool::Request::Queue(vec![transaction_parameter]);
 
         let response = mempool.oneshot(request).await.map_misc_error()?;
@@ -1504,6 +1520,34 @@ where
             // propagate the error coming from the verifier to be able to return more specific
             // error codes.
             .map_error(server::error::LegacyCode::Verify)
+    }
+
+    async fn check_admission(
+        &self,
+        raw_transaction_hex: String,
+    ) -> Result<SendRawTransactionResponse> {
+        let unmined_transaction = decode_unmined_transaction(raw_transaction_hex)?;
+        let transaction_hash = unmined_transaction.transaction.hash();
+
+        let request = mempool::Request::CheckAdmission(unmined_transaction);
+        let response = self
+            .mempool
+            .clone()
+            .oneshot(request)
+            .await
+            .map_misc_error()?;
+        let mempool::Response::Admission(admission) = response else {
+            unreachable!("incorrect response variant from mempool service")
+        };
+
+        match admission {
+            mempool::Admission::Accepted => Ok(SendRawTransactionResponse(transaction_hash)),
+            // `sendrawtransaction`'s code for the same refusal
+            mempool::Admission::Rejected(refused) => {
+                Err(refused).map_error(server::error::LegacyCode::Verify)
+            }
+            mempool::Admission::Indeterminate(failed) => Err(failed).map_misc_error(),
+        }
     }
 
     // # Performance
@@ -3564,6 +3608,18 @@ where
     latest_chain_tip
         .best_tip_height()
         .ok_or_misc_error("No blocks in state")
+}
+
+/// Hex → one unmined transaction (`Deserialization` error otherwise; shared by
+/// `sendrawtransaction` and `checkadmission`)
+fn decode_unmined_transaction(raw_transaction_hex: String) -> Result<UnminedTx> {
+    // Reference for the legacy error code:
+    // <https://github.com/zcash/zcash/blob/99ad6fdc3a549ab510422820eea5e5ce9f60a5fd/src/rpc/rawtransaction.cpp#L1259-L1260>
+    let raw_transaction_bytes =
+        Vec::from_hex(raw_transaction_hex).map_error(server::error::LegacyCode::Deserialization)?;
+    let raw_transaction = Transaction::zcash_deserialize(&*raw_transaction_bytes)
+        .map_error(server::error::LegacyCode::Deserialization)?;
+    Ok(UnminedTx::from(Arc::new(raw_transaction)))
 }
 
 /// Response to a `getinfo` RPC request.

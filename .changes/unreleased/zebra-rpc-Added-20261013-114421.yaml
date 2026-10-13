@@ -1,0 +1,4 @@
+project: zebra-rpc
+kind: Added
+body: 'Added `Rpc::check_admission` (`checkadmission`): `sendrawtransaction`''s checks and answers, nothing added to the mempool or relayed.'
+time: 2026-10-13T11:44:21.000000000-07:00

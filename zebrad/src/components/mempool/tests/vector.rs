@@ -1099,6 +1099,146 @@ async fn mempool_failed_verification_is_rejected() -> Result<(), Report> {
     Ok(())
 }
 
+/// `CheckAdmission` answers what `Queue` would, and leaves no trace
+///
+/// - disabled mempool → error (no verdict)
+/// - verifier Ok + standard → `Accepted`; verifier refusal / non-standard → `Rejected`; verifier
+///   internal failure → `Indeterminate`
+/// - already in the mempool → `Accepted`, spend conflict → `Rejected`, neither asks the verifier
+/// - nothing inserted, nothing cached as rejected, nothing gossiped, no peer asked
+#[tokio::test(flavor = "multi_thread")]
+async fn check_admission_answers_like_queue_without_inserting_or_gossiping() -> Result<(), Report> {
+    let network = Network::Mainnet;
+    let (
+        mut mempool,
+        mut peer_set,
+        _state_service,
+        _chain_tip_change,
+        mut tx_verifier,
+        mut recent_syncs,
+        mut mempool_transaction_receiver,
+    ) = setup(&network, u64::MAX, true).await;
+
+    let spender = pick_transaction_with_prevout(&network);
+    let with_outputs = |outputs: Vec<transparent::Output>| {
+        let mut tx = (*spender.transaction.transaction).clone();
+        tx.set_outputs(outputs);
+        UnminedTx::from(std::sync::Arc::new(tx))
+    };
+    let dust = with_outputs(vec![transparent::Output {
+        value: Amount::new(10),
+        lock_script: p2pkh_script([0u8; 20]),
+    }]);
+    let double_spend = with_outputs(vec![transparent::Output {
+        value: Amount::new(100_000),
+        lock_script: p2pkh_script([1u8; 20]),
+    }]);
+    assert_ne!(dust.id, spender.transaction.id);
+    assert_ne!(double_spend.id, spender.transaction.id);
+
+    let check = |tx: UnminedTx| Request::CheckAdmission(tx);
+    let disabled = mempool
+        .ready()
+        .await
+        .unwrap()
+        .call(check(spender.transaction.clone()))
+        .await;
+    assert!(
+        disabled.is_err(),
+        "a disabled mempool gives no verdict: {disabled:?}"
+    );
+
+    mempool.enable(&mut recent_syncs).await;
+
+    // verifier answers per transaction: Ok, a consensus refusal, an internal failure
+    let cases: Vec<(UnminedTx, Result<(), TransactionError>, &str)> = vec![
+        (spender.transaction.clone(), Ok(()), "Accepted"),
+        (
+            dust.clone(),
+            Ok(()),
+            "Rejected: transaction is non-standard",
+        ),
+        (
+            spender.transaction.clone(),
+            Err(TransactionError::BadBalance),
+            "Rejected",
+        ),
+        (
+            spender.transaction.clone(),
+            Err(TransactionError::InternalDowncastError("timeout".into())),
+            "Indeterminate",
+        ),
+    ];
+    for (tx, verdict, expected) in cases {
+        let answer = mempool.ready().await.unwrap().call(check(tx));
+        let verification =
+            tx_verifier
+                .expect_request_that(|_| true)
+                .map(|responder| match verdict {
+                    Ok(()) => {
+                        let transaction = responder.request().clone().transaction;
+                        let fee = Amount::try_from(1_000_000).expect("valid fee");
+                        let verified =
+                            VerifiedUnminedTx::new(transaction, fee, 0, 0, Arc::new(vec![]))
+                                .expect("verification should pass");
+                        responder.respond(transaction::MempoolResponse::from(verified));
+                    }
+                    Err(error) => responder.respond(Err(error)),
+                });
+        let (answer, _) = futures::join!(answer, verification);
+        let Response::Admission(admission) = answer.expect("an enabled mempool answers") else {
+            panic!("CheckAdmission answers Admission")
+        };
+        let shown = match &admission {
+            Admission::Accepted => "Accepted".to_owned(),
+            Admission::Rejected(why) => format!("Rejected: {why}"),
+            Admission::Indeterminate(why) => format!("Indeterminate: {why}"),
+        };
+        assert!(
+            shown.starts_with(expected),
+            "{expected} expected, got {shown}"
+        );
+    }
+
+    let storage = mempool.storage();
+    assert_eq!(storage.transaction_count(), 0, "a check inserts nothing");
+    for id in [spender.transaction.id, dust.id] {
+        assert!(
+            storage.rejection_error(&id).is_none(),
+            "a check caches no rejection"
+        );
+    }
+
+    storage.insert(spender.clone(), Vec::new(), None)?;
+    for (tx, expected) in [
+        (spender.transaction.clone(), "Accepted"),
+        (double_spend, "Rejected"),
+    ] {
+        let answer = mempool.ready().await.unwrap().call(check(tx)).await;
+        let Response::Admission(admission) = answer.expect("an enabled mempool answers") else {
+            panic!("CheckAdmission answers Admission")
+        };
+        let shown = match &admission {
+            Admission::Accepted => "Accepted",
+            Admission::Rejected(_) => "Rejected",
+            Admission::Indeterminate(_) => "Indeterminate",
+        };
+        assert_eq!(shown, expected, "{admission:?}");
+    }
+    tx_verifier.expect_no_requests().await;
+
+    mempool.dummy_call().await;
+    peer_set.expect_no_requests().await;
+    let change = timeout(
+        Duration::from_millis(500),
+        mempool_transaction_receiver.recv(),
+    )
+    .await;
+    assert!(change.is_err(), "a check gossips nothing: {change:?}");
+
+    Ok(())
+}
+
 /// Regression test for #10689: `poll_ready()` must stay ready when the
 /// `MempoolChange` broadcast channel has no subscribers.
 ///

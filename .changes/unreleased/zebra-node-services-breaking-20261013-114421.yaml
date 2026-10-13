@@ -1,0 +1,4 @@
+project: zebra-node-services
+kind: breaking
+body: '`mempool::Request::CheckAdmission(UnminedTx)` asks whether the mempool would admit a transaction now, answered by `mempool::Response::Admission(Admission)` (`Accepted`, `Rejected`, `Indeterminate`), without inserting or gossiping it. Exhaustive matches on `Request` and `Response` gain a variant.'
+time: 2026-10-13T11:44:21.000000000-07:00

@@ -1,0 +1,4 @@
+project: zebrad
+kind: Added
+body: 'Added the `checkadmission` RPC: runs the checks `sendrawtransaction` runs and answers the same way (the txid, or the same `-25` refusal), without adding the transaction to the mempool or relaying it. A check that fails for a reason outside the transaction is a `-1` error.'
+time: 2026-10-13T11:44:21.000000000-07:00

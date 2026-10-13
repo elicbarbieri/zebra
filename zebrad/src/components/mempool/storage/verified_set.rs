@@ -321,7 +321,7 @@ impl VerifiedSet {
     ///
     /// Two transactions have a spend conflict if they spend the same UTXO or if they reveal the
     /// same nullifier.
-    fn has_spend_conflicts(&self, unmined_tx: &UnminedTx) -> bool {
+    pub(super) fn has_spend_conflicts(&self, unmined_tx: &UnminedTx) -> bool {
         let tx = &unmined_tx.transaction;
 
         Self::has_conflicts(&self.spent_outpoints, tx.spent_outpoints())
