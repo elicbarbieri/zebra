@@ -48,7 +48,7 @@ use tracing_futures::Instrument;
 use zebra_chain::{
     block::Height,
     parameters::NetworkUpgrade,
-    transaction::{self, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, UnminedTx, UnminedTxId, VerifiedUnminedTx},
     transparent,
 };
 use zebra_consensus::transaction as tx;
@@ -399,22 +399,9 @@ where
 
         let fut = async move {
             // Don't download/verify if the transaction is already in the best chain.
-            Self::transaction_in_best_chain(&mut state, txid).await?;
+            transaction_in_best_chain(&mut state, txid).await?;
 
             trace!(?txid, "transaction is not in best chain");
-
-            let (tip_height, next_height) = match state.oneshot(zs::Request::Tip).await {
-                Ok(zs::Response::Tip(None)) => Ok((None, Height(0))),
-                Ok(zs::Response::Tip(Some((height, _hash)))) => {
-                    let next_height =
-                        (height + 1).expect("valid heights are far below the maximum");
-                    Ok((Some(height), next_height))
-                }
-                Ok(_) => unreachable!("wrong response"),
-                Err(e) => Err(TransactionDownloadVerifyError::StateError(e.into())),
-            }?;
-
-            trace!(?txid, ?next_height, "got next height");
 
             let (tx, advertiser_addr) = match gossiped_tx {
                 Gossip::Id(txid) => {
@@ -441,48 +428,30 @@ where
                     metrics::counter!(
                         "mempool.downloaded.transactions.total",
                         "version" => format!("{}",tx.transaction.version()),
-                    ).increment(1);
+                    )
+                    .increment(1);
                     (tx, advertiser_addr)
                 }
                 Gossip::Tx(tx) => {
                     metrics::counter!(
                         "mempool.pushed.transactions.total",
                         "version" => format!("{}",tx.transaction.version()),
-                    ).increment(1);
+                    )
+                    .increment(1);
                     (tx, pushed_advertiser_addr)
                 }
             };
 
             trace!(?txid, "got tx");
 
-            let transaction_upgrade = tx.transaction.network_upgrade();
-            let result = verifier
-                .oneshot(tx::MempoolRequest {
-                    transaction: tx.clone(),
-                    height: next_height,
-                })
-                .map_ok(|rsp| {
-                    let tx::MempoolResponse { transaction, spent_mempool_outpoints } = rsp;
-
-                    (transaction, spent_mempool_outpoints, tip_height)
-                })
-                .await;
-
-            // Hide the transaction data to avoid filling the logs
-            trace!(?txid, result = ?result.as_ref().map(|_tx| ()), "verified transaction for the mempool");
-
-            result.map_err(|error| TransactionDownloadVerifyError::Invalid {
-                error: error.into(),
-                advertiser_addr,
-                transaction_upgrade,
-                verification_height: next_height,
-            })
+            verify_for_next_block(state, verifier, tx, advertiser_addr).await
         }
         .map_ok(|(tx, spent_mempool_outpoints, tip_height)| {
             metrics::counter!(
                 "mempool.verified.transactions.total",
                 "version" => format!("{}", tx.transaction.transaction.version()),
-            ).increment(1);
+            )
+            .increment(1);
             (tx, spent_mempool_outpoints, tip_height)
         })
         // Tack the hash onto the error so we can remove the cancel handle
@@ -627,28 +596,97 @@ where
             .iter()
             .map(|(_tx_id, (_handle, tx, _source))| tx)
     }
+}
 
-    /// Check if transaction is already in the best chain.
-    async fn transaction_in_best_chain(
-        state: &mut ZS,
-        txid: UnminedTxId,
-    ) -> Result<(), TransactionDownloadVerifyError> {
-        match state
-            .ready()
-            .await
-            .map_err(CloneError::from)
-            .map_err(TransactionDownloadVerifyError::StateError)?
-            .call(zs::Request::Transaction(txid.mined_id()))
-            .await
-        {
-            Ok(zs::Response::Transaction(None)) => Ok(()),
-            Ok(zs::Response::Transaction(Some(_))) => Err(TransactionDownloadVerifyError::InState),
-            Ok(_) => unreachable!("wrong response"),
-            Err(e) => Err(TransactionDownloadVerifyError::StateError(e.into())),
-        }?;
+/// Check if transaction is already in the best chain.
+pub(super) async fn transaction_in_best_chain<ZS>(
+    state: &mut ZS,
+    txid: UnminedTxId,
+) -> Result<(), TransactionDownloadVerifyError>
+where
+    ZS: Service<zs::Request, Response = zs::Response, Error = BoxError> + Send + Clone + 'static,
+    ZS::Future: Send,
+{
+    match state
+        .ready()
+        .await
+        .map_err(CloneError::from)
+        .map_err(TransactionDownloadVerifyError::StateError)?
+        .call(zs::Request::Transaction(txid.mined_id()))
+        .await
+    {
+        Ok(zs::Response::Transaction(None)) => Ok(()),
+        Ok(zs::Response::Transaction(Some(_))) => Err(TransactionDownloadVerifyError::InState),
+        Ok(_) => unreachable!("wrong response"),
+        Err(e) => Err(TransactionDownloadVerifyError::StateError(e.into())),
+    }?;
 
-        Ok(())
-    }
+    Ok(())
+}
+
+/// `tx` verified for the block above the best tip → (verified, mempool outpoints it spends, tip)
+///
+/// - shared by every queued candidate ([`Downloads`]) and `CheckAdmission`
+pub(super) async fn verify_for_next_block<ZV, ZS>(
+    state: ZS,
+    verifier: ZV,
+    tx: UnminedTx,
+    advertiser_addr: Option<PeerSocketAddr>,
+) -> Result<
+    (
+        VerifiedUnminedTx,
+        Vec<transparent::OutPoint>,
+        Option<Height>,
+    ),
+    TransactionDownloadVerifyError,
+>
+where
+    ZV: Service<tx::MempoolRequest, Response = tx::MempoolResponse, Error = BoxError>
+        + Send
+        + Clone
+        + 'static,
+    ZV::Future: Send,
+    ZS: Service<zs::Request, Response = zs::Response, Error = BoxError> + Send + Clone + 'static,
+    ZS::Future: Send,
+{
+    let txid = tx.id;
+    let (tip_height, next_height) = match state.oneshot(zs::Request::Tip).await {
+        Ok(zs::Response::Tip(None)) => Ok((None, Height(0))),
+        Ok(zs::Response::Tip(Some((height, _hash)))) => {
+            let next_height = (height + 1).expect("valid heights are far below the maximum");
+            Ok((Some(height), next_height))
+        }
+        Ok(_) => unreachable!("wrong response"),
+        Err(e) => Err(TransactionDownloadVerifyError::StateError(e.into())),
+    }?;
+
+    trace!(?txid, ?next_height, "got next height");
+
+    let transaction_upgrade = tx.transaction.network_upgrade();
+    let result = verifier
+        .oneshot(tx::MempoolRequest {
+            transaction: tx,
+            height: next_height,
+        })
+        .map_ok(|rsp| {
+            let tx::MempoolResponse {
+                transaction,
+                spent_mempool_outpoints,
+            } = rsp;
+
+            (transaction, spent_mempool_outpoints, tip_height)
+        })
+        .await;
+
+    // Hide the transaction data to avoid filling the logs
+    trace!(?txid, result = ?result.as_ref().map(|_tx| ()), "verified transaction for the mempool");
+
+    result.map_err(|error| TransactionDownloadVerifyError::Invalid {
+        error: error.into(),
+        advertiser_addr,
+        transaction_upgrade,
+        verification_height: next_height,
+    })
 }
 
 #[pinned_drop]

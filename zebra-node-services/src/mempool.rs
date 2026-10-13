@@ -99,6 +99,9 @@ pub enum Request {
         source: SocketAddr,
     },
 
+    /// Would `Queue` admit this transaction now: same checks, nothing inserted, nothing gossiped
+    CheckAdmission(UnminedTx),
+
     /// Check for newly verified transactions.
     ///
     /// The transaction downloader does not push transactions into the mempool.
@@ -180,6 +183,9 @@ pub enum Response {
     /// Each result matches the request at the corresponding vector index.
     Queued(Vec<Result<oneshot::Receiver<Result<(), BoxError>>, BoxError>>),
 
+    /// Response to [`Request::CheckAdmission`].
+    Admission(Admission),
+
     /// Confirms that the mempool has checked for recently verified transactions.
     CheckedForVerifiedTransactions,
 
@@ -197,6 +203,17 @@ pub enum Response {
 
     /// Returns whether a transparent output is created or spent in the mempool, if present.
     TransparentOutput(Option<CreatedOrSpent>),
+}
+
+/// [`Request::CheckAdmission`]'s verdict, as of the checked tip
+#[derive(Debug)]
+pub enum Admission {
+    /// Admissible now, or already in the mempool
+    Accepted,
+    /// Refused: the error `Queue` would answer
+    Rejected(BoxError),
+    /// No verdict (state, verifier timeout): says nothing about the transaction
+    Indeterminate(BoxError),
 }
 
 /// Indicates whether an output was created or spent by a mempool transaction.
