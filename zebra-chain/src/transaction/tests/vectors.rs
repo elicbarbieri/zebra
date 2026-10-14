@@ -1834,7 +1834,7 @@ fn with_transparent_inputs_drops_empty_bundle() {
         1,
         BundleVersion::orchard_insecure_v1(),
     );
-    let transaction = Transaction::test_v5_with_orchard(
+    let transaction = CompressedTransaction::test_v5_with_orchard(
         NetworkUpgrade::Nu5,
         Vec::new(),
         Vec::new(),
@@ -1846,7 +1846,7 @@ fn with_transparent_inputs_drops_empty_bundle() {
 
     assert!(transaction.transparent_bundle().is_none());
 
-    let deserialized_transaction: Transaction = transaction
+    let deserialized_transaction: CompressedTransaction = transaction
         .zcash_serialize_to_vec()
         .expect("the fixture serializes")
         .zcash_deserialize_into()
