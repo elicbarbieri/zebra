@@ -97,6 +97,12 @@ pub struct Config {
 
     /// The maximum size of the response body in bytes.
     pub max_response_body_size: u32,
+
+    /// The maximum number of RPC requests the server processes at once, across all clients.
+    ///
+    /// A request is counted while Zebra processes it, not while it waits on the network.
+    /// Requests over the limit are rejected with HTTP 429 (Too Many Requests).
+    pub max_connections: u32,
 }
 
 // This impl isn't derivable because it depends on features.
@@ -127,6 +133,9 @@ impl Default for Config {
 
             // 50 MiB
             max_response_body_size: 52_428_800,
+
+            // jsonrpsee's default
+            max_connections: 100,
         }
     }
 }
