@@ -152,6 +152,7 @@ impl RpcServer {
             .set_http_middleware(http_middleware)
             .set_rpc_middleware(rpc_middleware)
             .max_response_body_size(conf.max_response_body_size)
+            .max_connections(conf.max_connections)
             .build(listen_addr)
             .await?;
 
