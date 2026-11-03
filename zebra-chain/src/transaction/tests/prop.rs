@@ -76,7 +76,9 @@ proptest! {
     /// directly instead of rebuilding the input and output vectors; they must agree with the
     /// allocating accessors.
     #[test]
-    fn transparent_presence_matches_accessors(tx in any::<Transaction>()) {
+    fn transparent_presence_matches_accessors(
+        tx in CompressedTransaction::strategy(LedgerState::default())
+    ) {
         let _init_guard = zebra_test::init();
 
         prop_assert_eq!(tx.has_transparent_inputs(), !tx.inputs().is_empty());

@@ -48,7 +48,7 @@ pub use serialize::{
 };
 pub use sighash::{HashType, SigHash, SigHasher};
 #[cfg(any(test, feature = "proptest-impl"))]
-pub use test_signing::TransparentSigningKey;
+pub use test_signing::{SignedTransparent, TransparentSigningKey};
 pub use unmined::{
     zip317, UnminedTx, UnminedTxId, VerifiedUnminedTx, MEMPOOL_TRANSACTION_COST_THRESHOLD,
 };

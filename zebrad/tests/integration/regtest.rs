@@ -263,7 +263,9 @@ async fn block_template_includes_mempool_transactions_in_dependency_order() -> R
     use zebra_chain::{
         amount::Amount,
         parameters::NetworkKind,
-        transaction::{Transaction, TransparentSigningKey},
+        transaction::{
+            CompressedTransaction, SignedTransparent, TransactionExt, TransparentSigningKey,
+        },
     };
     use zebra_rpc::{
         client::{
@@ -329,7 +331,7 @@ async fn block_template_includes_mempool_transactions_in_dependency_order() -> R
     // Transaction A spends the mature coinbase; transaction B spends A's first output while A is
     // still unmined, so B can only be valid in a block that also contains A, before it.
     let send_amount = Amount::try_from(100_000_000)?;
-    let tx_a = Transaction::signed_transparent(
+    let tx_a = CompressedTransaction::signed_transparent(
         &network,
         next_height,
         &key,
@@ -341,7 +343,7 @@ async fn block_template_includes_mempool_transactions_in_dependency_order() -> R
         hash: tx_a.hash(),
         index: 0,
     };
-    let tx_b = Transaction::signed_transparent(
+    let tx_b = CompressedTransaction::signed_transparent(
         &network,
         next_height,
         &key,

@@ -1677,7 +1677,9 @@ async fn connection_ignores_notfound_for_cancelled_requests() {
     .collect();
     let transactions: Vec<UnminedTx> = blocks
         .iter()
-        .map(|block| UnminedTx::from(&block.transactions[0]))
+        .map(|block| {
+            UnminedTx::try_from(block.transactions[0].clone()).expect("test coinbase decompresses")
+        })
         .collect();
     let block_request = |block: &Arc<Block>| Request::BlocksByHash(HashSet::from([block.hash()]));
     let transaction_request = |tx: &UnminedTx| Request::TransactionsById(HashSet::from([tx.id]));

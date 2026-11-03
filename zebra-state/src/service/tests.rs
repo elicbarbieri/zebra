@@ -715,7 +715,7 @@ fn coinbase_authorization_twin(block: &Arc<Block>) -> Arc<Block> {
     let script_end = SCRIPT_LEN_OFFSET + 1 + usize::from(coinbase[SCRIPT_LEN_OFFSET]);
     coinbase[script_end - 1] ^= 0x01;
 
-    let coinbase: transaction::Transaction = coinbase
+    let coinbase: transaction::CompressedTransaction = coinbase
         .zcash_deserialize_into()
         .expect("mutated coinbase parses");
 

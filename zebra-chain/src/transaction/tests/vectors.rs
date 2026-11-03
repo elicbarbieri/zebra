@@ -1902,11 +1902,11 @@ fn sighash_of_every_input_is_linear_in_the_number_of_inputs() {
     let expiry_height = block::Height(0);
     let transactions = [
         (
-            Transaction::test_v4(inputs.clone(), outputs.clone(), lock_time, expiry_height),
+            CompressedTransaction::test_v4(inputs.clone(), outputs.clone(), lock_time, expiry_height),
             NetworkUpgrade::Canopy,
         ),
         (
-            Transaction::test_v5(
+            CompressedTransaction::test_v5(
                 NetworkUpgrade::Nu5,
                 inputs.clone(),
                 outputs.clone(),
@@ -1916,7 +1916,7 @@ fn sighash_of_every_input_is_linear_in_the_number_of_inputs() {
             NetworkUpgrade::Nu5,
         ),
         (
-            Transaction::test_v6(
+            CompressedTransaction::test_v6(
                 NetworkUpgrade::Nu6_3,
                 inputs,
                 outputs,

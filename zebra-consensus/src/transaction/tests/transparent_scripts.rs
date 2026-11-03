@@ -10,7 +10,7 @@ use zebra_chain::{
     amount::{Amount, NonNegative},
     block,
     parameters::{Network, NetworkUpgrade},
-    transaction::{self, LockTime, Transaction},
+    transaction::{self, CompressedTransaction, LockTime, TransactionExt, TransactionTestExt},
     transparent,
 };
 use zebra_state as zs;
@@ -108,7 +108,11 @@ fn outpoint(index: usize) -> transparent::OutPoint {
 
 /// A transaction of `version` that spends the first `input_count` test outputs with `script_sig`,
 /// and pays a fee above the ZIP-317 conventional fee.
-fn spend(version: Version, input_count: usize, script_sig: &transparent::Script) -> Transaction {
+fn spend(
+    version: Version,
+    input_count: usize,
+    script_sig: &transparent::Script,
+) -> CompressedTransaction {
     let inputs = (0..input_count)
         .map(|index| transparent::Input::PrevOut {
             outpoint: outpoint(index),
@@ -129,9 +133,9 @@ fn spend(version: Version, input_count: usize, script_sig: &transparent::Script)
 
     match version {
         Version::V4 => {
-            Transaction::test_v4(inputs, outputs, LockTime::unlocked(), block::Height(0))
+            CompressedTransaction::test_v4(inputs, outputs, LockTime::unlocked(), block::Height(0))
         }
-        Version::V5 => Transaction::test_v5(
+        Version::V5 => CompressedTransaction::test_v5(
             NetworkUpgrade::Nu6,
             inputs,
             outputs,
@@ -173,13 +177,15 @@ fn state(input_count: usize) -> BoxCloneService<zs::Request, zs::Response, BoxEr
 }
 
 /// Verifies `transaction` for the mempool, with a state that holds the outputs it spends.
-async fn verify_for_mempool(transaction: Arc<Transaction>) -> Result<(), TransactionError> {
+async fn verify_for_mempool(
+    transaction: Arc<CompressedTransaction>,
+) -> Result<(), TransactionError> {
     let state = state(transaction.inputs().len());
 
     tokio::time::timeout(
         test_timeout(),
         MempoolTxVerifier::new_for_tests(&network(), state).oneshot(MempoolRequest {
-            transaction: transaction.into(),
+            transaction: transaction.try_into().expect("test transactions decompress"),
             height: height(),
         }),
     )

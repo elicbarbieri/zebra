@@ -25,7 +25,7 @@ use crate::{
     amount::{Amount, NonNegative},
     block::Height,
     parameters::{Network, NetworkKind},
-    transaction::{compat, Transaction},
+    transaction::{compat, CompressedTransaction},
     transparent, BoxError,
 };
 
@@ -60,13 +60,25 @@ impl TransparentSigningKey {
     }
 }
 
-impl Transaction {
+/// Signed transparent-only test transactions (a constructor on the upstream
+/// [`CompressedTransaction`], so a trait)
+pub trait SignedTransparent: Sized {
     /// Builds and signs a transparent-only transaction that spends `inputs`, which must all be
     /// P2PKH outputs owned by `key`, to `outputs`.
     ///
     /// Pays the ZIP-317 conventional fee and returns the remainder to `key` as a final change
     /// output, so `inputs` must cover `outputs` plus the fee with a non-dust amount left over.
-    pub fn signed_transparent(
+    fn signed_transparent(
+        network: &Network,
+        target_height: Height,
+        key: &TransparentSigningKey,
+        inputs: &[(transparent::OutPoint, transparent::Output)],
+        outputs: &[(transparent::Address, Amount<NonNegative>)],
+    ) -> Result<Self, BoxError>;
+}
+
+impl SignedTransparent for CompressedTransaction {
+    fn signed_transparent(
         network: &Network,
         target_height: Height,
         key: &TransparentSigningKey,
@@ -170,6 +182,6 @@ impl Transaction {
         )
         .freeze()?;
 
-        Ok(Self(signed_tx))
+        Ok(signed_tx.compress())
     }
 }

@@ -1,4 +1,4 @@
-//! Tests for [`Transaction::signed_transparent`].
+//! Tests for [`CompressedTransaction::signed_transparent`].
 //!
 //! Signature validity is not checked here: the regtest integration test in `zebrad` sends the
 //! transactions through consensus verification, which is the only oracle that counts.
@@ -8,7 +8,9 @@ use crate::{
     block::Height,
     parameters::{testnet::ConfiguredActivationHeights, Network, NetworkKind, NetworkUpgrade},
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction::{self, Transaction, TransparentSigningKey},
+    transaction::{
+        self, CompressedTransaction, SignedTransparent, TransactionExt, TransparentSigningKey,
+    },
     transparent,
 };
 
@@ -39,7 +41,7 @@ fn signed_transparent_pays_outputs_fee_and_change() {
     };
     let send_amount = Amount::try_from(30_000_000).expect("valid amount");
 
-    let tx = Transaction::signed_transparent(
+    let tx = CompressedTransaction::signed_transparent(
         &network,
         Height(10),
         &key,
@@ -79,7 +81,7 @@ fn signed_transparent_pays_outputs_fee_and_change() {
         "exactly the ZIP-317 conventional fee is paid"
     );
 
-    let round_trip: Transaction = tx
+    let round_trip: CompressedTransaction = tx
         .zcash_serialize_to_vec()
         .expect("serializes")
         .zcash_deserialize_into()
@@ -100,7 +102,7 @@ fn signed_transparent_rejects_underfunded_spend() {
         lock_script: address.script(),
     };
 
-    let result = Transaction::signed_transparent(
+    let result = CompressedTransaction::signed_transparent(
         &network,
         Height(10),
         &key,
@@ -131,7 +133,7 @@ fn signed_transparent_rejects_dust_change() {
         lock_script: address.script(),
     };
 
-    let result = Transaction::signed_transparent(
+    let result = CompressedTransaction::signed_transparent(
         &network,
         Height(10),
         &key,

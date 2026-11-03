@@ -2172,7 +2172,7 @@ async fn advertised_services_reach_the_remote_and_our_gossiped_listener() {
     };
     let nil_inbound_service = service_fn(|_| async { Ok(Response::Nil) });
 
-    let (_full_peers, full_book, _) = init(
+    let (_full_peers, full_book, _, _) = init(
         listener_config(IndexSet::new()),
         nil_inbound_service,
         NoChainTip,
@@ -2182,7 +2182,7 @@ async fn advertised_services_reach_the_remote_and_our_gossiped_listener() {
     .await;
     let full_addr = full_book.lock().unwrap().local_listener_socket_addr();
 
-    let (_quiet_peers, quiet_book, _) = init(
+    let (_quiet_peers, quiet_book, _, _) = init(
         listener_config([full_addr.to_string()].into_iter().collect()),
         nil_inbound_service,
         NoChainTip,

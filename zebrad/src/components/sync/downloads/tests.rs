@@ -22,7 +22,7 @@ use zebra_chain::{
         NetworkUpgrade,
     },
     serialization::{ZcashDeserializeInto, ZcashSerialize},
-    transaction as chain_transaction,
+    transaction::{self as chain_transaction, TransactionExt},
     work::difficulty::U256,
     LedgerState,
 };
@@ -82,7 +82,7 @@ fn coinbase_authorization_twin(block: &Arc<Block>) -> Arc<Block> {
     let script_end = SCRIPT_LEN_OFFSET + 1 + usize::from(coinbase[SCRIPT_LEN_OFFSET]);
     coinbase[script_end - 1] ^= 0x01;
 
-    let coinbase: chain_transaction::Transaction = coinbase
+    let coinbase: chain_transaction::CompressedTransaction = coinbase
         .zcash_deserialize_into()
         .expect("mutated coinbase parses");
 
