@@ -1,0 +1,453 @@
+{
+  "name": "arm-b-t4",
+  "benchmarks": {
+    "ironwood-tip/block/max-439": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/ironwood-tip/block/max-439",
+      "criterion_benchmark_v1": {
+        "group_id": "ironwood-tip",
+        "function_id": "block/max-439",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 439
+        },
+        "full_id": "ironwood-tip/block/max-439",
+        "directory_name": "ironwood-tip/block_max-439"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 5014590.948349999,
+            "upper_bound": 5066198.821250001
+          },
+          "point_estimate": 5039287.164,
+          "standard_error": 13218.733871705546
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 4983038.3,
+            "upper_bound": 5023774.6
+          },
+          "point_estimate": 5013623.6,
+          "standard_error": 10537.994206316422
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 67203.73638689559,
+            "upper_bound": 117391.45048588596
+          },
+          "point_estimate": 101231.70381277744,
+          "standard_error": 14175.870658923994
+        },
+        "slope": null,
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 98654.53784182724,
+            "upper_bound": 163432.9150500469
+          },
+          "point_estimate": 132890.63481575684,
+          "standard_error": 16567.51100336043
+        }
+      }
+    },
+    "ironwood-tip/block/p50-6": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/ironwood-tip/block/p50-6",
+      "criterion_benchmark_v1": {
+        "group_id": "ironwood-tip",
+        "function_id": "block/p50-6",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 6
+        },
+        "full_id": "ironwood-tip/block/p50-6",
+        "directory_name": "ironwood-tip/block_p50-6"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 422553.9624789203,
+            "upper_bound": 425199.4847399537
+          },
+          "point_estimate": 423787.2220737942,
+          "standard_error": 676.8753698409139
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 421216.5476190476,
+            "upper_bound": 423430.1906067252
+          },
+          "point_estimate": 422208.2645683658,
+          "standard_error": 595.9307090313293
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 3286.8850174794616,
+            "upper_bound": 5589.068037770601
+          },
+          "point_estimate": 4603.732388080606,
+          "standard_error": 622.9468690109251
+        },
+        "slope": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 423091.5988091411,
+            "upper_bound": 425666.1218937481
+          },
+          "point_estimate": 424340.00556721346,
+          "standard_error": 656.225216494385
+        },
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 4330.735436339191,
+            "upper_bound": 9007.675811381874
+          },
+          "point_estimate": 6809.9300032441915,
+          "standard_error": 1203.3336538650476
+        }
+      }
+    },
+    "ironwood-tip/block/p90-17": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/ironwood-tip/block/p90-17",
+      "criterion_benchmark_v1": {
+        "group_id": "ironwood-tip",
+        "function_id": "block/p90-17",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 17
+        },
+        "full_id": "ironwood-tip/block/p90-17",
+        "directory_name": "ironwood-tip/block_p90-17"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 500899.4948942597,
+            "upper_bound": 507944.41516093095
+          },
+          "point_estimate": 504206.16233115905,
+          "standard_error": 1801.3544951974238
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 495028.3804442509,
+            "upper_bound": 503633.862244898
+          },
+          "point_estimate": 497630.9398444012,
+          "standard_error": 2066.838166682332
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 6961.88682126202,
+            "upper_bound": 15685.168828350768
+          },
+          "point_estimate": 10276.60041934599,
+          "standard_error": 2281.748456318115
+        },
+        "slope": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 495729.0767822577,
+            "upper_bound": 499357.81171592063
+          },
+          "point_estimate": 497447.8364770208,
+          "standard_error": 927.039621067664
+        },
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 12130.669546601292,
+            "upper_bound": 23834.779280318355
+          },
+          "point_estimate": 18061.092930351188,
+          "standard_error": 3043.0607256935823
+        }
+      }
+    },
+    "ironwood-tip/replay": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/ironwood-tip/replay",
+      "criterion_benchmark_v1": {
+        "group_id": "ironwood-tip",
+        "function_id": "replay",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 94862
+        },
+        "full_id": "ironwood-tip/replay",
+        "directory_name": "ironwood-tip/replay"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 3067986291.2,
+            "upper_bound": 3083015971.4
+          },
+          "point_estimate": 3075474805.7,
+          "standard_error": 3844842.6833376656
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 3063906835.0,
+            "upper_bound": 3084801033.0
+          },
+          "point_estimate": 3075865628.5,
+          "standard_error": 4732562.5847641
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 3719570.5355644226,
+            "upper_bound": 23200508.683508635
+          },
+          "point_estimate": 10574416.733166575,
+          "standard_error": 5114951.543044498
+        },
+        "slope": null,
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 7112689.875560141,
+            "upper_bound": 16294812.05449876
+          },
+          "point_estimate": 12845020.4280402,
+          "standard_error": 2369679.4963999116
+        }
+      }
+    },
+    "orchard-sandblast/block/max-631": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/orchard-sandblast/block/max-631",
+      "criterion_benchmark_v1": {
+        "group_id": "orchard-sandblast",
+        "function_id": "block/max-631",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 631
+        },
+        "full_id": "orchard-sandblast/block/max-631",
+        "directory_name": "orchard-sandblast/block_max-631"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 7129527.349071429,
+            "upper_bound": 7181205.525142859
+          },
+          "point_estimate": 7155083.644285713,
+          "standard_error": 13168.238691773457
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 7124797.357142857,
+            "upper_bound": 7205167.571428572
+          },
+          "point_estimate": 7154093.5,
+          "standard_error": 19956.58546256375
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 98121.43145799635,
+            "upper_bound": 160109.35995749026
+          },
+          "point_estimate": 128222.55282359474,
+          "standard_error": 16136.33897599601
+        },
+        "slope": null,
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 113890.36520031292,
+            "upper_bound": 150142.5268533333
+          },
+          "point_estimate": 132844.05325410925,
+          "standard_error": 9259.11838422675
+        }
+      }
+    },
+    "orchard-sandblast/block/p50-242": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/orchard-sandblast/block/p50-242",
+      "criterion_benchmark_v1": {
+        "group_id": "orchard-sandblast",
+        "function_id": "block/p50-242",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 242
+        },
+        "full_id": "orchard-sandblast/block/p50-242",
+        "directory_name": "orchard-sandblast/block_p50-242"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 2968854.191911763,
+            "upper_bound": 2992172.2028382337
+          },
+          "point_estimate": 2980480.3117647045,
+          "standard_error": 5942.319460031458
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 2965820.2647058824,
+            "upper_bound": 2987700.3823529407
+          },
+          "point_estimate": 2976740.470588235,
+          "standard_error": 5807.388251145166
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 34895.86836871015,
+            "upper_bound": 61055.29836311051
+          },
+          "point_estimate": 47904.5057789369,
+          "standard_error": 6693.951671292118
+        },
+        "slope": null,
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 49488.693628776615,
+            "upper_bound": 68865.2723976437
+          },
+          "point_estimate": 59731.571499294805,
+          "standard_error": 4952.354061265263
+        }
+      }
+    },
+    "orchard-sandblast/block/p90-463": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/orchard-sandblast/block/p90-463",
+      "criterion_benchmark_v1": {
+        "group_id": "orchard-sandblast",
+        "function_id": "block/p90-463",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 463
+        },
+        "full_id": "orchard-sandblast/block/p90-463",
+        "directory_name": "orchard-sandblast/block_p90-463"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 5418852.718649998,
+            "upper_bound": 5462450.6521
+          },
+          "point_estimate": 5439406.720999999,
+          "standard_error": 11121.420052091198
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 5396311.05,
+            "upper_bound": 5442058.6
+          },
+          "point_estimate": 5410168.3,
+          "standard_error": 11804.934515667834
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 56454.60117722997,
+            "upper_bound": 93051.38432800742
+          },
+          "point_estimate": 76400.67467361661,
+          "standard_error": 9815.481774139073
+        },
+        "slope": null,
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 77533.78171639032,
+            "upper_bound": 144632.285631551
+          },
+          "point_estimate": 112181.78052025114,
+          "standard_error": 17256.784837362786
+        }
+      }
+    },
+    "orchard-sandblast/replay": {
+      "baseline": "arm-b-t4",
+      "fullname": "arm-b-t4/orchard-sandblast/replay",
+      "criterion_benchmark_v1": {
+        "group_id": "orchard-sandblast",
+        "function_id": "replay",
+        "value_str": null,
+        "throughput": {
+          "Bytes": null,
+          "Elements": 360314
+        },
+        "full_id": "orchard-sandblast/replay",
+        "directory_name": "orchard-sandblast/replay"
+      },
+      "criterion_estimates_v1": {
+        "mean": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 4404347682.8,
+            "upper_bound": 4454383926.4
+          },
+          "point_estimate": 4429079420.7,
+          "standard_error": 12697997.886263411
+        },
+        "median": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 4406712273.0,
+            "upper_bound": 4475365741.0
+          },
+          "point_estimate": 4417332545.5,
+          "standard_error": 16709332.988996312
+        },
+        "median_abs_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 4268332.676821947,
+            "upper_bound": 86675504.65400219
+          },
+          "point_estimate": 18924699.996319413,
+          "standard_error": 22397230.46869802
+        },
+        "slope": null,
+        "std_dev": {
+          "confidence_interval": {
+            "confidence_level": 0.95,
+            "lower_bound": 22031590.596704375,
+            "upper_bound": 54071242.945683025
+          },
+          "point_estimate": 42388441.95924995,
+          "standard_error": 7961946.942640939
+        }
+      }
+    }
+  }
+}
