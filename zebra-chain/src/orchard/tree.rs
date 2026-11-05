@@ -20,8 +20,10 @@ use std::{
 use bitvec::prelude::*;
 use halo2::pasta::{group::ff::PrimeField, pallas};
 use hex::ToHex;
-use incrementalmerkletree::{frontier::NonEmptyFrontier, Hashable};
+use incrementalmerkletree::{frontier::NonEmptyFrontier, Hashable, Level};
 use lazy_static::lazy_static;
+use rayon::prelude::*;
+use sinsemilla::{HashDomain, K};
 use thiserror::Error;
 use zcash_primitives::merkle_tree::HashSer;
 
@@ -43,6 +45,56 @@ use legacy::LegacyNoteCommitmentTree;
 pub type NoteCommitmentUpdate = pallas::Base;
 
 pub(super) const MERKLE_DEPTH: u8 = 32;
+
+const L_ORCHARD_MERKLE: usize = 255;
+const MERKLE_CRH_BITS: usize = K + 2 * L_ORCHARD_MERKLE;
+const _: () = assert!(MERKLE_CRH_BITS.is_multiple_of(K));
+const MERKLE_CRH_WORDS: usize = MERKLE_CRH_BITS / K;
+const CHILD_FULL_WORDS: usize = L_ORCHARD_MERKLE / K;
+const CHILD_TAIL_BITS: usize = L_ORCHARD_MERKLE % K;
+const WORD_MASK: u16 = (1 << K) - 1;
+
+/// Fewest pairs per rayon task (= `sinsemilla`'s shared-inversion threshold)
+const MIN_PAIRS_PER_TASK: usize = 8;
+/// Most pairs per rayon task (more tasks than threads → balance across P/E cores)
+const MAX_PAIRS_PER_TASK: usize = 256;
+
+/// `MerkleCRH^Orchard` message as `K`-bit LE words: `l` ‖ left ‖ right
+///
+/// - word `1 + CHILD_FULL_WORDS` straddles both children (255 % K = 5 bits each)
+fn merkle_crh_words(
+    layer: u8,
+    left: &pallas::Base,
+    right: &pallas::Base,
+) -> [u16; MERKLE_CRH_WORDS] {
+    fn word_at(bytes: &[u8; 32], bit: usize) -> u16 {
+        let byte = bit / 8;
+        let window = u32::from_le_bytes([
+            bytes[byte],
+            bytes.get(byte + 1).copied().unwrap_or(0),
+            bytes.get(byte + 2).copied().unwrap_or(0),
+            0,
+        ]);
+        // masked to K = 10 bits, so the truncation drops only zero bits
+        (window >> (bit % 8)) as u16 & WORD_MASK
+    }
+
+    let left = left.to_repr();
+    let right = right.to_repr();
+    let mut words = [0; MERKLE_CRH_WORDS];
+
+    words[0] = u16::from(MERKLE_DEPTH - 1 - layer);
+    for (index, word) in words[1..=CHILD_FULL_WORDS].iter_mut().enumerate() {
+        *word = word_at(&left, index * K);
+    }
+    words[1 + CHILD_FULL_WORDS] = word_at(&left, CHILD_FULL_WORDS * K)
+        | (word_at(&right, 0) & ((1 << CHILD_TAIL_BITS) - 1)) << CHILD_TAIL_BITS;
+    for (index, word) in words[2 + CHILD_FULL_WORDS..].iter_mut().enumerate() {
+        *word = word_at(&right, CHILD_TAIL_BITS + index * K);
+    }
+
+    words
+}
 
 /// MerkleCRH^Orchard Hash Function
 ///
@@ -74,6 +126,8 @@ fn merkle_crh_orchard(layer: u8, left: pallas::Base, right: pallas::Base) -> pal
 }
 
 lazy_static! {
+    static ref MERKLE_CRH_DOMAIN: HashDomain = HashDomain::new("z.cash:Orchard-MerkleCRH");
+
     /// List of "empty" Orchard note commitment nodes, one for each layer.
     ///
     /// The list is indexed by the layer number (0: root; MERKLE_DEPTH: leaf).
@@ -291,6 +345,38 @@ impl Hashable for Node {
         Self(merkle_crh_orchard(layer, a.0, b.0))
     }
 
+    /// `combine` over each pair, hashed together (`hash_many_vartime` shares field inversions)
+    ///
+    /// - wide levels split across rayon tasks of `MIN..=MAX_PAIRS_PER_TASK` pairs
+    fn combine_pairs(level: Level, children: &[Self]) -> Vec<Self> {
+        assert!(children.len().is_multiple_of(2), "children pair up");
+        let layer = MERKLE_DEPTH - 1 - u8::from(level);
+        let parents = |children: &[Self]| -> Vec<Self> {
+            let messages: Vec<_> = children
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|[left, right]| merkle_crh_words(layer, &left.0, &right.0))
+                .collect();
+            MERKLE_CRH_DOMAIN
+                .hash_many_vartime(&messages)
+                .into_iter()
+                .map(|hash| Self(Option::from(hash).unwrap_or(pallas::Base::zero())))
+                .collect()
+        };
+
+        let per_task = (children.len() / 2)
+            .div_ceil(rayon::current_num_threads())
+            .clamp(MIN_PAIRS_PER_TASK, MAX_PAIRS_PER_TASK);
+        if children.len() > 2 * per_task {
+            return children
+                .par_chunks(2 * per_task)
+                .flat_map_iter(parents)
+                .collect();
+        }
+        parents(children)
+    }
+
     /// Return the node for the level below the given level. (A quirk of the API)
     fn empty_root(level: incrementalmerkletree::Level) -> Self {
         let layer_below = usize::from(MERKLE_DEPTH) - usize::from(level);
@@ -399,6 +485,43 @@ impl NoteCommitmentTree {
         } else {
             Err(NoteCommitmentTreeError::FullTree)
         }
+    }
+
+    /// Appends a block's note commitments, hashing each tree level as one batch.
+    ///
+    /// Returns the index and root of the subtree at [`TRACKED_SUBTREE_HEIGHT`] the block
+    /// completes, if any (at most one: `nActionsOrchard < 2^16`), or an error if the tree would
+    /// overflow (then nothing is appended).
+    #[allow(clippy::unwrap_in_result)]
+    pub fn append_batch(
+        &mut self,
+        cm_xs: Vec<NoteCommitmentUpdate>,
+    ) -> Result<Option<(NoteCommitmentSubtreeIndex, Node)>, NoteCommitmentTreeError> {
+        let mut completed_subtree = None;
+        let leaves = cm_xs.into_iter().map(Node).collect();
+        let appended = self.inner.append_batch_visiting(leaves, |first, nodes| {
+            if first.level() != Level::from(TRACKED_SUBTREE_HEIGHT) {
+                return;
+            }
+            // last node of the run = subtree completed last in this block
+            let last = nodes.len() - 1;
+            let index = (first.index() + u64::try_from(last).expect("fits in u64"))
+                .try_into()
+                .expect("fits in u16");
+            completed_subtree = Some((NoteCommitmentSubtreeIndex(index), nodes[last]));
+        });
+
+        if !appended {
+            return Err(NoteCommitmentTreeError::FullTree);
+        }
+
+        let cached_root = self
+            .cached_root
+            .get_mut()
+            .expect("a thread that previously held exclusive lock access panicked");
+        *cached_root = None;
+
+        Ok(completed_subtree)
     }
 
     /// Returns frontier of non-empty tree, or `None` if the tree is empty.
