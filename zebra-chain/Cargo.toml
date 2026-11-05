@@ -164,6 +164,10 @@ harness = false
 required-features = ["bench"]
 
 [[bench]]
+name = "orchard_tree"
+harness = false
+
+[[bench]]
 name = "redpallas"
 harness = false
 
